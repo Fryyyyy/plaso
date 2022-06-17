@@ -29,13 +29,14 @@ class HashingAnalyzer(interface.BaseAnalyzer):
     self._hasher_names_string = ''
     self._hashers = []
 
-  def Analyze(self, data):
+  def Analyze(self, _, data):
     """Updates the internal state of the analyzer, processing a block of data.
 
     Repeated calls are equivalent to a single call with the concatenation of
     all the arguments.
 
     Args:
+      fo (File class): File object containing file metadata
       data (bytes): block of data from the data stream.
     """
     for hasher in self._hashers:

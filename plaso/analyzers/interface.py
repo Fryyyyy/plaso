@@ -19,10 +19,11 @@ class BaseAnalyzer(object):
   SIZE_LIMIT = 32 * 1024 * 1024
 
   @abc.abstractmethod
-  def Analyze(self, data):
+  def Analyze(self, fo, data):
     """Analyzes a block of data, updating the state of the analyzer
 
     Args:
+      fo (File class): File object containing file metadata
       data(bytes): block of data to process.
     """
 

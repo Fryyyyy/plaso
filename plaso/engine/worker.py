@@ -21,6 +21,13 @@ from plaso.engine import logger
 from plaso.lib import definitions
 from plaso.lib import errors
 
+class File(object):
+  """Container for a FileObject.
+  """
+  def __init__(self, fo=None, dn=None):
+    self.file_object = fo
+    self.display_name = dn
+
 
 class EventExtractionWorker(object):
   """Event extraction worker.
@@ -179,6 +186,8 @@ class EventExtractionWorker(object):
       event_data_stream (EventDataStream): event data stream attribute
            container.
     """
+    fo = File(file_object, display_name)
+
     maximum_read_size = max([
         analyzer_object.SIZE_LIMIT for analyzer_object in self._analyzers])
 
@@ -188,15 +197,15 @@ class EventExtractionWorker(object):
         hashers_only = False
         break
 
-    file_size = file_object.get_size()
+    file_size = fo.file_object.get_size()
 
     if (hashers_only and self._hasher_file_size_limit and
         file_size > self._hasher_file_size_limit):
       return
 
-    file_object.seek(0, os.SEEK_SET)
+    fo.file_object.seek(0, os.SEEK_SET)
 
-    data = file_object.read(maximum_read_size)
+    data = fo.file_object.read(maximum_read_size)
     while data:
       if self._abort:
         break
@@ -220,14 +229,14 @@ class EventExtractionWorker(object):
           self._analyzers_profiler.StartTiming(analyzer_object.NAME)
 
         try:
-          analyzer_object.Analyze(data)
+          analyzer_object.Analyze(fo, data)
         finally:
           if self._analyzers_profiler:
             self._analyzers_profiler.StopTiming(analyzer_object.NAME)
 
         self.last_activity_timestamp = time.time()
 
-      data = file_object.read(maximum_read_size)
+      data = fo.file_object.read(maximum_read_size)
 
     for analyzer_object in self._analyzers:
       for result in analyzer_object.GetResults():

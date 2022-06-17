@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 """Analyzer that matches Yara rules."""
 
+import os
 import yara
 
 try:
-  from yara import Error as YaraError
+    from yara import Error as YaraError
 except ImportError:
-  from yara import YaraError
+    from yara import YaraError
 
 try:
-  from yara import TimeoutError as YaraTimeoutError
+    from yara import TimeoutError as YaraTimeoutError
 except ImportError:
-  from yara import YaraTimeoutError
+    from yara import YaraTimeoutError
 
 from plaso.analyzers import interface
 from plaso.analyzers import logger
@@ -21,70 +22,83 @@ from plaso.lib import definitions
 
 
 class YaraAnalyzer(interface.BaseAnalyzer):
-  """Analyzer that matches Yara rules."""
+    """Analyzer that matches Yara rules."""
 
-  # pylint: disable=no-member
+    # pylint: disable=no-member
 
-  NAME = 'yara'
-  DESCRIPTION = 'Matches Yara rules over input data.'
+    NAME = 'yara'
+    DESCRIPTION = 'Matches Yara rules over input data.'
 
-  PROCESSING_STATUS_HINT = definitions.STATUS_INDICATOR_YARA_SCAN
+    PROCESSING_STATUS_HINT = definitions.STATUS_INDICATOR_YARA_SCAN
 
-  INCREMENTAL_ANALYZER = False
+    INCREMENTAL_ANALYZER = False
 
-  _ATTRIBUTE_NAME = 'yara_match'
-  _MATCH_TIMEOUT = 60
+    _ATTRIBUTE_NAME = 'yara_match'
+    _MATCH_TIMEOUT = 60
 
-  def __init__(self):
-    """Initializes the Yara analyzer."""
-    super(YaraAnalyzer, self).__init__()
-    self._matches = []
-    self._rules = None
+    def __init__(self):
+        """Initializes the Yara analyzer."""
+        super(YaraAnalyzer, self).__init__()
+        self._matches = []
+        self._rules = None
 
-  def Analyze(self, data):
-    """Analyzes a block of data, attempting to match Yara rules to it.
+    def Analyze(self, fo, data):
+        """Analyzes a block of data, attempting to match Yara rules to it.
 
     Args:
+      fo (File class): File object containing file metadata
       data(bytes): a block of data.
     """
-    if not self._rules:
-      return
+        if not self._rules:
+            return
 
-    try:
-      self._matches = self._rules.match(data=data, timeout=self._MATCH_TIMEOUT)
+        try:
+            self._matches = self._rules.match(data=data,
+                                              externals={
+                                                  'filename':
+                                                  fo.display_name,
+                                                  'filepath':
+                                                  os.path.split(
+                                                      fo.display_name)[0]
+                                              },
+                                              timeout=self._MATCH_TIMEOUT)
 
-    except YaraTimeoutError:
-      logger.error('Could not process file within timeout: {0:d}'.format(
-          self._MATCH_TIMEOUT))
+        except YaraTimeoutError:
+            logger.error('Could not process file within timeout: {0:d}'.format(
+                self._MATCH_TIMEOUT))
 
-    except YaraError as exception:
-      logger.error('Error processing file with Yara: {0!s}.'.format(
-          exception))
+        except YaraError as exception:
+            logger.error('Error processing file with Yara: {0!s}.'.format(
+                exception))
 
-  def GetResults(self):
-    """Retrieves results of the most recent analysis.
+    def GetResults(self):
+        """Retrieves results of the most recent analysis.
 
     Returns:
       list[AnalyzerResult]: results.
     """
-    result = analyzer_result.AnalyzerResult()
-    result.analyzer_name = self.NAME
-    result.attribute_name = self._ATTRIBUTE_NAME
-    rule_names = [match.rule for match in self._matches]
-    result.attribute_value = ','.join(rule_names)
-    return [result]
+        result = analyzer_result.AnalyzerResult()
+        result.analyzer_name = self.NAME
+        result.attribute_name = self._ATTRIBUTE_NAME
+        rule_names = [match.rule for match in self._matches]
+        result.attribute_value = ','.join(rule_names)
+        return [result]
 
-  def Reset(self):
-    """Resets the internal state of the analyzer."""
-    self._matches = []
+    def Reset(self):
+        """Resets the internal state of the analyzer."""
+        self._matches = []
 
-  def SetRules(self, rules_string):
-    """Sets the rules that the Yara analyzer will use.
+    def SetRules(self, rules_string):
+        """Sets the rules that the Yara analyzer will use.
 
     Args:
       rules_string(str): Yara rule definitions
     """
-    self._rules = yara.compile(source=rules_string)
+        self._rules = yara.compile(source=rules_string,
+                                   externals={
+                                       'filename': "",
+                                       'filepath': ""
+                                   })
 
 
 manager.AnalyzersManager.RegisterAnalyzer(YaraAnalyzer)
