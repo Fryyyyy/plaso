@@ -1,0 +1,576 @@
+# dtFabric format specification.
+---
+name: aul
+type: format
+description: Apple Unified Logging and Activity Tracing formats
+urls: ["https://github.com/libyal/dtformats/blob/main/documentation/Apple%20Unified%20Logging%20and%20Activity%20Tracing%20formats.ascidoc"]
+---
+name: byte
+type: integer
+attributes:
+  format: unsigned
+  size: 1
+  units: bytes
+---
+name: char
+type: integer
+attributes:
+  format: signed
+  size: 1
+  units: bytes
+---
+name: uint8
+type: integer
+attributes:
+  format: unsigned
+  size: 1
+  units: bytes
+---
+name: uint16
+type: integer
+attributes:
+  format: unsigned
+  size: 2
+  units: bytes
+---
+name: uint32
+type: integer
+attributes:
+  format: unsigned
+  size: 4
+  units: bytes
+---
+name: int32
+type: integer
+attributes:
+  format: signed
+  size: 4
+  units: bytes
+---
+name: uint64
+type: integer
+attributes:
+  format: unsigned
+  size: 8
+  units: bytes
+---
+name: int64
+type: integer
+attributes:
+  format: signed
+  size: 8
+  units: bytes
+---
+name: cstring
+type: string
+encoding: ascii
+element_data_type: char
+elements_terminator: "\x00"
+---
+name: uuid_be
+type: uuid
+attributes:
+  byte_order: big-endian
+---
+name: dsc_range_descriptor_v1
+type: structure
+description: Shared-Cache strings (dsc) range descriptor version 1.
+attributes:
+  byte_order: little-endian
+members:
+- name: uuid_descriptor_index
+  data_type: uint32
+- name: range_offset
+  data_type: uint32
+- name: data_offset
+  data_type: uint32
+- name: range_size
+  data_type: uint32
+---
+name: dsc_range_descriptor_v2
+type: structure
+description: Shared-Cache strings (dsc) range descriptor version 2.
+attributes:
+  byte_order: little-endian
+members:
+- name: unknown_offset
+  data_type: uint64
+- name: range_offset
+  data_type: uint32
+- name: range_size
+  data_type: uint32
+- name: uuid_descriptor_index
+  data_type: uint64
+---
+name: dsc_uuid_descriptor_v1
+type: structure
+description: Shared-Cache strings (dsc) UUID descriptor version 1.
+attributes:
+  byte_order: little-endian
+members:
+- name: text_offset
+  data_type: uint32
+- name: text_size
+  data_type: uint32
+- name: sender_identifier
+  data_type: uuid_be
+- name: path_offset
+  data_type: uint32
+---
+name: dsc_uuid_descriptor_v2
+type: structure
+description: Shared-Cache strings (dsc) UUID descriptor version 2.
+attributes:
+  byte_order: little-endian
+members:
+- name: text_offset
+  data_type: uint64
+- name: text_size
+  data_type: uint32
+- name: sender_identifier
+  data_type: uuid_be
+- name: path_offset
+  data_type: uint32
+---
+name: dsc_file_header
+type: structure
+description: Shared-Cache strings (dsc) file header.
+attributes:
+  byte_order: little-endian
+members:
+- name: signature
+  type: stream
+  element_data_type: byte
+  number_of_elements: 4
+- name: major_format_version
+  data_type: uint16
+- name: minor_format_version
+  data_type: uint16
+- name: number_of_ranges
+  data_type: uint32
+- name: number_of_uuids
+  data_type: uint32
+---
+name: tracev3_chunk_header
+type: structure
+description: TraceV3 chunk header.
+attributes:
+  byte_order: little-endian
+members:
+- name: chunk_tag
+  data_type: uint32
+- name: chunk_sub_tag
+  data_type: uint32
+- name: chunk_data_size
+  data_type: uint32
+- name: unknown1
+  data_type: uint32
+---
+name: tracev3_header_systeminfo_subchunk
+type: structure
+description: TraceV3 Header System Information Subchunk
+attributes:
+  byte_order: little-endian
+members:
+- name: unknown1
+  data_type: uint32
+- name: unknown2
+  data_type: uint32
+- name: build_version_string
+  type: string
+  encoding: utf8
+  element_data_type: char
+  elements_data_size: 16
+  elements_terminator: "\x00"
+- name: hardware_model_string
+  type: string
+  encoding: utf8
+  element_data_type: char
+  elements_data_size: 32
+  elements_terminator: "\x00"
+---
+name: tracev3_header_generation_subchunk
+type: structure
+description: TraceV3 Header Generation Subchunk
+attributes:
+  byte_order: little-endian
+members:
+- name: boot_uuid
+  type: sequence
+  element_data_type: uuid_be
+  elements_data_size: 16
+- name: logd_pid
+  data_type: uint32
+- name: logd_exit_status
+  data_type: uint32
+---
+name: tracev3_header_timezone_subchunk
+type: structure
+description: TraceV3 Header Time Zone Subchunk
+attributes:
+  byte_order: little-endian
+members:
+- name: path_to_tzfile
+  type: string
+  encoding: utf8
+  element_data_type: char
+  elements_data_size: 48
+  elements_terminator: "\x00"
+---
+name: tracev3_header_subchunk
+type: structure
+description: TraceV3 Header Subchunk block.
+attributes:
+  byte_order: little-endian
+members:
+- name: sub_chunk_tag
+  data_type: uint32
+- name: sub_chunk_data_size
+  data_type: uint32
+- name: continous_time_data
+  type: stream
+  element_data_type: byte
+  number_of_elements: tracev3_header_subchunk.sub_chunk_data_size
+  condition: tracev3_header_subchunk.sub_chunk_tag == 0x6100
+- name: systeminfo_subchunk
+  type: sequence
+  element_data_type: tracev3_header_systeminfo_subchunk
+  number_of_elements: 1
+  condition: tracev3_header_subchunk.sub_chunk_tag == 0x6101
+- name: generation_subchunk
+  type: sequence
+  element_data_type: tracev3_header_generation_subchunk
+  number_of_elements: 1
+  condition: tracev3_header_subchunk.sub_chunk_tag == 0x6102
+- name: timezone_subchunk
+  type: sequence
+  element_data_type: tracev3_header_timezone_subchunk
+  number_of_elements: 1
+  condition: tracev3_header_subchunk.sub_chunk_tag == 0x6103
+---
+name: tracev3_header
+type: structure
+description: TraceV3 Header chunk
+attributes:
+  byte_order: little-endian
+members:
+- name: mach_timebase_numerator
+  data_type: uint32
+- name: mach_timebase_denominator
+  data_type: uint32
+- name: continuous_time
+  data_type: uint64
+- name: unknown_time
+  data_type: uint64
+- name: unknown1
+  data_type: uint32
+- name: bias_in_minutes
+  data_type: uint32
+- name: dst_active
+  data_type: uint32
+- name: flags
+  data_type: uint32
+- name: continuous_time_subchunk
+  data_type: tracev3_header_subchunk
+- name: systeminfo_subchunk
+  data_type: tracev3_header_subchunk
+- name: generation_subchunk
+  data_type: tracev3_header_subchunk
+- name: timezone_subchunk
+  data_type: tracev3_header_subchunk
+---
+name: tracev3_lz4_block_header
+type: structure
+description: TraceV3 LZ4 block header.
+attributes:
+  byte_order: little-endian
+members:
+- name: signature
+  type: stream
+  element_data_type: byte
+  number_of_elements: 4
+- name: uncompressed_data_size
+  data_type: uint32
+- name: compressed_data_size
+  data_type: uint32
+---
+name: tracev3_catalog_uuid_entry
+type: structure
+description: TraceV3 Catalog UUID block.
+attributes:
+  byte_order: little-endian
+members:
+- name: size
+  data_type: uint32
+- name: unknown
+  data_type: uint32
+- name: catalog_uuid_index
+  data_type: uint16
+- name: load_address
+  type: stream
+  element_data_type: byte
+  number_of_elements: 6
+---
+name: tracev3_catalog_subsystem_entry
+type: structure
+description: TraceV3 Catalog Subsystem block.
+attributes:
+  byte_order: little-endian
+members:
+- name: identifier
+  data_type: uint16
+- name: subsystem_offset
+  data_type: uint16
+- name: category_offset
+  data_type: uint16
+---
+name: tracev3_catalog_process_information_entry
+type: structure
+description: TraceV3 Catalog Process Information block.
+attributes:
+  byte_order: little-endian
+members:
+- name: index
+  data_type: uint16
+- name: unknown1
+  data_type: uint16
+- name: main_uuid_index
+  data_type: uint16
+- name: catalog_dsc_index
+  data_type: uint16
+- name: first_number_proc_id
+  data_type: uint64
+- name: second_number_proc_id
+  data_type: uint32
+- name: pid
+  data_type: uint32
+- name: euid
+  data_type: uint32
+- name: unknown2
+  data_type: uint32
+- name: num_uuid_entries
+  data_type: uint32
+- name: unknown3
+  data_type: uint32
+- name: uuids
+  type: sequence
+  element_data_type: tracev3_catalog_uuid_entry
+  number_of_elements: tracev3_catalog_process_information_entry.num_uuid_entries
+- name: num_subsystem_entries
+  data_type: uint32
+- name: unknown4
+  data_type: uint32
+- name: subsystems
+  type: sequence
+  element_data_type: tracev3_catalog_subsystem_entry
+  number_of_elements: tracev3_catalog_process_information_entry.num_subsystem_entries
+- name: alignment_padding
+  type: padding
+  alignment_size: 8
+---
+name: tracev3_catalog_subchunk
+type: structure
+description: TraceV3 Catalog Sub Chunk block.
+attributes:
+  byte_order: little-endian
+members:
+- name: start
+  data_type: uint64
+- name: end
+  data_type: uint64
+- name: uncompressed_size
+  data_type: uint32
+- name: compression_algorithm
+  data_type: uint32
+- name: num_indexes
+  data_type: uint32
+- name: indexes
+  type: sequence
+  element_data_type: uint16
+  number_of_elements: tracev3_catalog_subchunk.num_indexes
+- name: num_offsets
+  data_type: uint32
+- name: offsets
+  type: sequence
+  element_data_type: uint16
+  number_of_elements: tracev3_catalog_subchunk.num_offsets
+- name: alignment_padding
+  type: padding
+  alignment_size: 8
+---
+name: tracev3_catalog
+type: structure
+description: TraceV3 catalog.
+attributes:
+  byte_order: little-endian
+members:
+- name: sub_system_strings_offset
+  data_type: uint16
+- name: process_information_entries_offset
+  data_type: uint16
+- name: number_of_process_information_entries
+  data_type: uint16
+- name: sub_chunks_offset
+  data_type: uint16
+- name: number_of_sub_chunks
+  data_type: uint16
+- name: unknown1
+  type: stream
+  element_data_type: byte
+  number_of_elements: 6
+- name: earliest_firehose_timestamp
+  data_type: uint64
+- name: uuids
+  type: sequence
+  element_data_type: uuid_be
+  elements_data_size: tracev3_catalog.sub_system_strings_offset
+- name: sub_system_strings
+  type: sequence
+  element_data_type: cstring
+  elements_data_size: tracev3_catalog.process_information_entries_offset - tracev3_catalog.sub_system_strings_offset
+#- name: process_entries
+#  type: sequence
+#  element_data_type: tracev3_catalog_process_information_entry
+#  number_of_elements: tracev3_catalog.number_of_process_information_entries
+#- name: catalog_subchunks
+#  type: sequence
+#  element_data_type: tracev3_catalog_subchunk
+#  number_of_elements: tracev3_catalog.number_of_sub_chunks
+---
+name: tracev3_firehose_header
+type: structure
+description: TraceV3 firehose header.
+attributes:
+  byte_order: little-endian
+members:
+- name: unknown1
+  data_type: uint64
+- name: unknown2
+  data_type: uint32
+- name: unknown3
+  data_type: uint32
+- name: public_data_size
+  data_type: uint16
+- name: private_data_virtual_offset
+  data_type: uint16
+- name: unknown4
+  data_type: uint16
+- name: unknown5
+  data_type: uint16
+- name: base_continous_time
+  data_type: uint64
+---
+name: tracev3_firehose_tracepoint
+type: structure
+description: TraceV3 firehose tracepoint.
+attributes:
+  byte_order: little-endian
+members:
+- name: unknown1
+  data_type: uint8
+- name: unknown2
+  data_type: uint8
+- name: unknown3
+  data_type: uint16
+- name: format_string_location
+  data_type: uint32
+- name: thread_identifier
+  data_type: uint64
+- name: continous_time_lower
+  data_type: uint32
+- name: continous_time_upper
+  data_type: uint16
+- name: data_size
+  data_type: uint16
+---
+name: uuidtext_entry_descriptor
+type: structure
+description: UUIDtext entry descriptor
+attributes:
+  byte_order: little-endian
+members:
+- name: offset
+  data_type: uint32
+- name: data_size
+  data_type: uint32
+---
+name: uuidtext_file_header
+type: structure
+description: UUIDtext file header.
+attributes:
+  byte_order: little-endian
+members:
+- name: signature
+  data_type: uint32
+- name: major_format_version
+  data_type: uint32
+- name: minor_format_version
+  data_type: uint32
+- name: number_of_entries
+  data_type: uint32
+- name: entry_descriptors
+  type: sequence
+  element_data_type: uuidtext_entry_descriptor
+  number_of_elements: uuidtext_file_header.number_of_entries
+---
+name: uuidtext_file_footer
+type: structure
+description: UUIDtext file footer.
+attributes:
+  byte_order: little-endian
+members:
+- name: library_path
+  type: string
+  encoding: utf8
+  element_data_type: char
+  elements_terminator: "\x00"
+---
+name: timesync_boot_record
+type: structure
+description: Timesync boot record
+attributes:
+  byte_order: little-endian
+members:
+- name: signature
+  data_type: uint16
+  value: 0xbbb0
+- name: header_size
+  data_type: uint16
+- name: unknown
+  data_type: uint32
+- name: boot_uuid
+  type: sequence
+  element_data_type: uuid_be
+  elements_data_size: 16
+- name: timebase_numerator
+  data_type: uint32
+- name: timebase_denominator
+  data_type: uint32
+- name: boot_time
+  data_type: uint64
+- name: time_zone_offset
+  data_type: int32
+- name: dst_flag
+  data_type: uint32
+---
+name: timesync_sync_record
+type: structure
+description: Timesync sync record
+attributes:
+  byte_order: little-endian
+members:
+- name: signature
+  type: stream
+  element_data_type: byte
+  elements_data_size: 4
+  value: "\x54\x73\x20\x00"
+- name: unknown1
+  data_type: uint32
+- name: kernel_continuous_timestamp
+  data_type: uint64
+- name: wall_time
+  data_type: int64
+- name: time_zone_offset
+  data_type: int32
+- name: dst_flag
+  data_type: uint32
