@@ -227,10 +227,8 @@ members:
   data_type: uint32
 - name: sub_chunk_data_size
   data_type: uint32
-- name: continous_time_data
-  type: stream
-  element_data_type: byte
-  number_of_elements: tracev3_header_subchunk.sub_chunk_data_size
+- name: continuous_time_data
+  data_type: uint64
   condition: tracev3_header_subchunk.sub_chunk_tag == 0x6100
 - name: systeminfo_subchunk
   type: sequence
@@ -443,21 +441,32 @@ description: TraceV3 firehose header.
 attributes:
   byte_order: little-endian
 members:
-- name: unknown1
+- name: first_number_proc_id
   data_type: uint64
-- name: unknown2
+- name: second_number_proc_id
   data_type: uint32
-- name: unknown3
-  data_type: uint32
+# UnifiedLogReader tracev3_file:774
+#- name: ttl
+#  data_type: uint32
+# Mandiant
+# firehose_logs.rs:114
+- name: ttl
+  data_type: uint8
+- name: collapsed
+  data_type: uint8
+- name: unknown1
+  data_type: uint16
 - name: public_data_size
+# UnifiedLogReader "offset_strings"
   data_type: uint16
 - name: private_data_virtual_offset
+# UnfiedLogReader "strings_v_offset"
   data_type: uint16
-- name: unknown4
+- name: unknown2
   data_type: uint16
-- name: unknown5
+- name: unknown3
   data_type: uint16
-- name: base_continous_time
+- name: base_continuous_time
   data_type: uint64
 ---
 name: tracev3_firehose_tracepoint
@@ -466,22 +475,58 @@ description: TraceV3 firehose tracepoint.
 attributes:
   byte_order: little-endian
 members:
-- name: unknown1
+- name: log_activity_type
+# UnifiedLogReader: u1 (uint16)
   data_type: uint8
-- name: unknown2
+- name: log_type
   data_type: uint8
-- name: unknown3
+- name: flags
+# UnifiedLogReader: u2
   data_type: uint16
 - name: format_string_location
+# UnifiedLogReader: fmt_str_v_offset
   data_type: uint32
 - name: thread_identifier
   data_type: uint64
-- name: continous_time_lower
+- name: continuous_time_lower
   data_type: uint32
-- name: continous_time_upper
+- name: continuous_time_upper
   data_type: uint16
 - name: data_size
   data_type: uint16
+- name: data
+  type: stream
+  element_data_type: byte
+  elements_data_size: tracev3_firehose_tracepoint.data_size
+- name: alignment_padding
+  type: padding
+  alignment_size: 8
+---
+name: tracev3_firehose_log_message_entries
+type: structure
+description: TraceV3 firehose log message entries.
+attributes:
+  byte_order: little-endian
+members:
+- name: item_type
+  data_type: uint8
+- name: item_size
+  data_type: uint8
+---
+name: tracev3_firehose_log_messages
+type: structure
+description: TraceV3 firehose log messages.
+attributes:
+  byte_order: little-endian
+members:
+- name: unknown1
+  data_type: uint8
+- name: num_items
+  data_type: uint8
+- name: items
+  type: stream
+  element_data_type: tracev3_firehose_log_message_entries
+  number_of_elements: num_items
 ---
 name: uuidtext_entry_descriptor
 type: structure
@@ -502,6 +547,7 @@ attributes:
 members:
 - name: signature
   data_type: uint32
+  value: 0x66778899
 - name: major_format_version
   data_type: uint32
 - name: minor_format_version

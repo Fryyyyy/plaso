@@ -174,7 +174,8 @@ class DtFabricHelper(object):
     Args:
       byte_stream (bytes): byte stream.
       file_offset (int): offset of the structure data relative to the start
-          of the file-like object.
+          of the file-like object. Note: this is only used for debugging - 
+          reading from the byte stream is not offset by this amount.
       data_type_map (dtfabric.DataTypeMap): data type map of the structure.
       context (Optional[dtfabric.DataTypeMapContext]): data type map context.
           The context is used within dtFabric to hold state about how to map
