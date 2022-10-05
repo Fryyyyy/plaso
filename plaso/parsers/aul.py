@@ -467,6 +467,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
   _CATALOG_LZ4_COMPRESSION = 0x100
 
+  # Chunk Tags
   _CHUNK_TAG_HEADER = 0x1000
   _CHUNK_TAG_FIREHOSE = 0x6001
   _CHUNK_TAG_OVERSIZE = 0x6002
@@ -474,11 +475,20 @@ class TraceV3FileParser(interface.FileObjectParser,
   _CHUNK_TAG_CATALOG = 0x600B
   _CHUNK_TAG_CHUNKSET = 0x600D
 
+  # Activity Types
   _FIREHOSE_LOG_ACTIVITY_TYPE_ACTIVITY = 0x2
   _FIREHOSE_LOG_ACTIVITY_TYPE_TRACE = 0x3
   _FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY = 0x4
   _FIREHOSE_LOG_ACTIVITY_TYPE_SIGNPOST = 0x6
   _FIREHOSE_LOG_ACTIVITY_TYPE_LOSS = 0x7
+
+  # Log Types
+  _LOG_TYPES = {
+    0x01: "Info",
+    0x02: "Debug",
+    0x10: "Error",
+    0x11: "Fault"
+  }
 
   def __init__(self, timesync_parser, uuid_parser):
     """Initializes a tracev3 file parser.
@@ -490,6 +500,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     self.catalogs = []
     self.chunksets = []
     self.boot_uuid_ts_list = None
+    self.logs = []
 
   # TODO(fryy): Rewrite
   def _ReadAPFSTime(self, mac_apfs_time):
@@ -544,6 +555,18 @@ class TraceV3FileParser(interface.FileObjectParser,
       time_string = self._ReadAPFSTime(time)
     return time_string
 
+  def _FormatString(self, format_string, data):
+    #Regexes: unified_log.rs: 203, tracev3_file.py: 56
+    data_items = []
+    new_format_string = format_string.replace('%@', '%s')
+    for item in data:
+      if item[0] == 0x2: # Number ?
+        data_items.append(int.from_bytes(item[2], 'little'))
+      else:
+        data_items.append(item[2])
+    x = new_format_string % tuple(data_items)
+    return x
+
   def _ReadHeader(self, file_object, file_offset):
     """Reads a Header.
 
@@ -595,6 +618,25 @@ class TraceV3FileParser(interface.FileObjectParser,
     for _ in range(catalog.number_of_process_information_entries):
       process_entry, new_bytes = self._ReadStructureFromFileObject(
         file_object, file_offset+offset_bytes, data_type_map)
+      process_entry.items = {}
+      for subsystem in process_entry.subsystems:
+        offset = 0
+        subsystem_string = None
+        category_string = None
+        for string in catalog.sub_system_strings:
+          if subsystem_string is None:
+            if offset >= subsystem.subsystem_offset:
+              subsystem_string = string
+              offset += len(string) + 1
+              continue
+            else:
+              offset += len(string) + 1
+          if category_string is None:
+            if offset >= subsystem.category_offset:
+              category_string = string
+              break
+            offset += len(string) + 1
+        process_entry.items[subsystem.identifier] = (subsystem_string, category_string)
       catalog.process_entries.append(process_entry)
       offset_bytes += new_bytes
 
@@ -710,7 +752,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
       data_offset += alignment
 
-  def _ParseNonActivity(self, tracepoint, proc_info):
+  def _ParseNonActivity(self, tracepoint, proc_info, time):
     logger.warning("Parsing non-activity")
     offset = 0
     flags = tracepoint.flags
@@ -736,6 +778,22 @@ class TraceV3FileParser(interface.FileObjectParser,
     _HAS_CONTEXT_DATA = 0x1000
     _HAS_SIGNPOST_NAME = 0x8000
 
+    # Item Types
+    _FIREHOSE_ITEM_NUMBER_TYPES = [0x0, 0x2]
+    _FIREHOSE_ITEM_STRING_PRIVATE = 0x1
+    _FIREHOSE_ITEM_PRIVATE_STRING_TYPES = [
+      0x21, 0x25, 0x31, 0x35, 0x41
+    ]
+    _FIREHOSE_ITEM_STRING_TYPES = [
+      0x20, 0x22, 0x30, 0x32, 0x40, 0x42, 0xf2
+    ]
+    _FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES = [
+      0x30, 0x31, 0x32
+    ]
+    _FIREHOSE_ITEM_STRING_BASE64_TYPE = 0xf2
+    _FIREHOSE_ITEM_PRECISION_TYPES = [0x10, 0x12]
+    _FIREHOSE_ITEM_SENSITIVE = 0x45
+
     uint8_data_type_map = self._GetDataTypeMap('uint8')
     uint16_data_type_map = self._GetDataTypeMap('uint16')
     uint32_data_type_map = self._GetDataTypeMap('uint32')
@@ -743,7 +801,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     if flags & _CURRENT_AID:
       logger.warning("Non-activity has current_aid")
       
-      unknown_activity_id = self._ReadStructureFromByteStream(
+      activity_id = self._ReadStructureFromByteStream(
         data, offset, uint32_data_type_map)
       offset += 4
       sentinel = self._ReadStructureFromByteStream(
@@ -810,38 +868,89 @@ class TraceV3FileParser(interface.FileObjectParser,
         if flags & _HAS_SIGNPOST_NAME:
           raise errors.ParseError("Non-activity signpost not supported")
 
-        # Read log data
-        if flags & _PRIVATE_STRING_RANGE:
-          raise errors.ParseError("Private strings not supported")
+    # Read log data
+    log_data = []
 
-        if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
-          logger.warning("Loss Type")
+    if flags & _PRIVATE_STRING_RANGE:
+      raise errors.ParseError("Private strings not supported")
+
+    if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
+      raise errors.ParseError("Loss Type not supported")
+
+    # TODO(fryy): Check for len(data[offset:] minimums)
+    data_meta = self._ReadStructureFromByteStream(
+      data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
+    offset += 2
+    for _ in range(data_meta.num_items):
+      data_item = self._ReadStructureFromByteStream(
+        data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item'))
+      offset += 2 + data_item.item_size
+      if data_item.item_type in _FIREHOSE_ITEM_NUMBER_TYPES:
+        log_data.append((data_item.item_type, data_item.item_size, data_item.item))
+      if data_item.item_type == _FIREHOSE_ITEM_STRING_PRIVATE or data_item.item_type in _FIREHOSE_ITEM_PRIVATE_STRING_TYPES or data_item.item_type in _FIREHOSE_ITEM_STRING_TYPES:
+        offset -= data_item.item_size
+        string_message = self._ReadStructureFromByteStream(
+          data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item_string_type'))
+        offset += data_item.item_size + string_message.message_data_size
+        if string_message.offset != 0:
+          raise errors.ParseError("Unsupported log item string offset")
+        if string_message.message_data_size == 0:
+          if data_item.item_type == 0x21 or data_item.item_type == 0x41:
+            log_data.append((data_item.item_type, data_item.item_size, "<private>"))
+          else:
+            log_data.append((data_item.item_type, data_item.item_size, "(null)"))
         else:
-          # tracepoint.data_size - offset
-          # log_data = self.ReadLogDataBuffer(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice, has_context_data)
-          # flags & _HAS_CONTEXT_DATA
-          # buffer[16 + 71 : 16 + 71 + 49], 49, '', False
-          # buffer[87 : 136], 49, '', False
+          log_data.append((data_item.item_type, data_item.item_size, string_message.message))
+        if data_item.item_type in _FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
+          logger.warning("Unsupported arbitrary type -- firehose_log.rs:790")
+        if data_item.item_type == _FIREHOSE_ITEM_STRING_BASE64_TYPE:
+          logger.warning("Unsupported base64 type -- firehose_log.rs:797")
+      if data_item.item_type in _FIREHOSE_ITEM_PRECISION_TYPES:
+        raise errors.ParseError("Precision types not supported -- firehose_log.rs:759")
+      if data_item.item_type == _FIREHOSE_ITEM_SENSITIVE:
+        raise errors.ParseError("Sensitive types not supported -- firehose_log.rs:764")
+      if data_item.item_type & 0xF0 == 0x10:
+        logger.warning("Unsupported special case?? tracev3_file.py:479")
+
+    if flags & _HAS_DATA_REF:
+      logger.warning("Data Ref Not Supported")
     
+    if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
+      raise errors.ParseError("Loss Type not supported")
+    
+    ret.update(
+      {
+        'message': self._FormatString(fmt, log_data),
+        'timestamp': time,
+        'thread': tracepoint.thread_identifier,
+        'log_type': self._LOG_TYPES.get(tracepoint.log_type, "Default"),
+        'activity_id': activity_id,
+        # 'parent_activity_id'
+        'pid': proc_info.pid,
+        'euid': proc_info.euid,
+        # 'ttl': 
+        'sub_sys': proc_info.items.get(subsystem_value, ('', ''))[0]
+        'category': proc_info.items.get(subsystem_value, ('', ''))[1]
+        'signpost_name': '',
+        'signpost_string': '',
+        # Library UUID? 'imageUUID'
+        # Process UUID? 'processImageUUID'
+      }
+    )
+
     logger.warning("!! Log Line !! : {0:s}".format(ret))
 
-  def _ParseTracepointData(self, tracepoint, proc_info):
+    return ret
+
+  def _ParseTracepointData(self, tracepoint, proc_info, time):
     """Parses a log line"""
 
-    # Log Types
-    _LOG_TYPES = {
-      0x01: "Info",
-      0x02: "Debug",
-      0x10: "Error",
-      0x11: "Fault"
-    }
-
     logger.warning("Parsing log line")
-    log_type = _LOG_TYPES.get(tracepoint.log_type, "Default")
+    log_type = self._LOG_TYPES.get(tracepoint.log_type, "Default")
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY:
       if log_type == 0x80:
         raise errors.ParseError("Non Activity Signpost ??")
-      self._ParseNonActivity(tracepoint, proc_info)
+      self._ParseNonActivity(tracepoint, proc_info, time)
     return
 
   def _ReadFirehoseChunkData(self, chunk_data, chunk_data_size, data_offset, catalog):
@@ -882,9 +991,10 @@ class TraceV3FileParser(interface.FileObjectParser,
       firehose_tracepoint = self._ReadFirehoseTracepointData(
           chunk_data[chunk_data_offset:], data_offset + chunk_data_offset)
 
-      #ct = firehose_header.base_continuous_time + (firehose_tracepoint.continuous_time_lower | (firehose_tracepoint.continuous_time_upper << 32))
-      #time = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct).wall_time + ct - ts.kernel_continuous_timestamp
-      self._ParseTracepointData(firehose_tracepoint, proc_info)
+      ct = firehose_header.base_continuous_time + (firehose_tracepoint.continuous_time_lower | (firehose_tracepoint.continuous_time_upper << 32))
+      ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
+      time = ts.wall_time + ct - ts.kernel_continuous_timestamp
+      self._ParseTracepointData(firehose_tracepoint, proc_info, time)
 
       chunk_data_offset += 24 + firehose_tracepoint.data_size
       _, alignment = divmod(chunk_data_offset, 8)
@@ -913,7 +1023,6 @@ class TraceV3FileParser(interface.FileObjectParser,
         tracepoint_data, data_offset, data_type_map)
 
     return firehose_tracepoint
-
 
   def ParseFileObject(self, parser_mediator, file_object):
     """Parses a timezone information file-like object.
