@@ -6,6 +6,8 @@ import os
 
 import lz4.block
 
+from dfdatetime import apfs_time as dfdatetime_apfs_time
+
 from dfvfs.helpers import file_system_searcher
 from dfvfs.lib import definitions
 from dfvfs.resolver import resolver as path_spec_resolver
@@ -13,6 +15,7 @@ from dfvfs.path import factory as path_spec_factory
 
 from plaso.containers import events
 from plaso.containers import time_events
+from plaso.lib import definitions as plaso_definitions
 from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 from plaso.lib import specification
@@ -56,7 +59,7 @@ class UUIDFileParser(
 
   def __init__(self, file_entry, file_system):
     super(UUIDFileParser, self).__init__()
-    self.records = []
+    self.uuid = None
     self.file_entry = file_entry
     self.file_system = file_system
     path_segments = file_system.SplitPath(file_entry.path_spec.location)
@@ -66,36 +69,29 @@ class UUIDFileParser(
         "Invalid UUIDText location: {0:s}".format(self.uuidtext_location))
 
   def FindFile(self, parser_mediator, uuid):
+    self.uuid = uuid
     kwargs = {}
     kwargs['location'] = self.file_system.JoinPath([self.uuidtext_location] + [uuid[0:2]] + [uuid[2:]])
     uuid_file_path_spec = path_spec_factory.Factory.NewPathSpec(
         self.file_entry.path_spec.TYPE_INDICATOR, **kwargs)
-    try:
-      uuid_file_entry = path_spec_resolver.Resolver.OpenFileEntry(
-          uuid_file_path_spec)
-    except RuntimeError as exception:
-      message = (
-          'Unable to open UUID file: {0:s} with error: '
-          '{1!s}'.format(kwargs['location'], exception))
-      logger.warning(message)
-      parser_mediator.ProduceExtractionWarning(message)
+
+    uuid_file_entry = path_spec_resolver.Resolver.OpenFileEntry(uuid_file_path_spec)
 
     if not uuid_file_entry:
-      message = 'Missing UUID file: {0:s}'.format(uuid)
+      return None
+
+    uuid_file_object = uuid_file_entry.GetFileObject()
+    try:
+      return self.ParseFileObject(parser_mediator, uuid_file_object)
+    except (IOError, errors.ParseError) as exception:
+      message = (
+          'Unable to parse UUID file: {0:s} with error: '
+          '{1!s}').format(uuid, exception)
       logger.warning(message)
       parser_mediator.ProduceExtractionWarning(message)
-    else:
-      uuid_file_object = uuid_file_entry.GetFileObject()
-      try:
-        self.ParseFileObject(parser_mediator, uuid_file_object, uuid)
-      except (IOError, errors.ParseError) as exception:
-        message = (
-            'Unable to parse UUID file: {0:s} with error: '
-            '{1!s}').format(uuid, exception)
-        logger.warning(message)
-        parser_mediator.ProduceExtractionWarning(message)
+    return None
 
-  def ParseFileObject(self, parser_mediator, file_object, uuid):
+  def ParseFileObject(self, parser_mediator, file_object):
     """Parses a UUID file-like object.
 
     Args:
@@ -128,13 +124,12 @@ class UUIDFileParser(
     uuid_footer, _ = self._ReadStructureFromFileObject(
       file_object, offset, self._GetDataTypeMap('uuidtext_file_footer')
     )
-    record = UUIDText(
+    return UUIDText(
       library_path=uuid_footer.library_path,
       library_name=os.path.basename(uuid_footer.library_path),
-      uuid=uuid,
+      uuid=self.uuid,
       data=data,
       entries=entries)
-    self.records.append(record)
 
 
 class TimesyncParser(
@@ -241,8 +236,8 @@ class DSCRange(object):
     path (str): path.
     range_offset (int): the offset of the range.
     range_sizes (int): the size of the range.
+    data_offset (int): the offset of the data.
     uuid (uuid.UUID): the UUID.
-    uuid_index (int): index of the UUID.
   """
 
   def __init__(self):
@@ -251,6 +246,7 @@ class DSCRange(object):
     self.path = None
     self.range_offset = None
     self.range_size = None
+    self.data_offset = None
     self.uuid = None
     self.uuid_index = None
 
@@ -274,6 +270,12 @@ class DSCUUID(object):
     self.text_size = None
 
 
+class DSCFile(object):
+  def __init__(self):
+    super(DSCFile, self).__init__()
+    self.ranges = []
+    self.uuids = []
+
 class DSCFileParser(
     interface.FileObjectParser, dtfabric_helper.DtFabricHelper):
   """Shared-Cache Strings (dsc) file parser.
@@ -286,12 +288,39 @@ class DSCFileParser(
   _DEFINITION_FILE = os.path.join(
       os.path.dirname(__file__), 'aul.yaml')
 
-  def __init__(self):
+  def __init__(self, file_entry, file_system):
     """Initializes a dsc file.
     """
     super(DSCFileParser, self).__init__()
-    self.ranges = []
-    self.uuids = []
+    self.file_entry = file_entry
+    self.file_system = file_system
+    path_segments = file_system.SplitPath(file_entry.path_spec.location)
+    self.dsc_location = file_system.JoinPath(path_segments[:-3] + ['uuidtext', 'dsc'])
+    if not os.path.exists(self.dsc_location):
+      raise errors.ParseError(
+        "Invalid UUIDText location: {0:s}".format(self.dsc_location))
+
+  def FindFile(self, parser_mediator, uuid):
+    kwargs = {}
+    kwargs['location'] = self.file_system.JoinPath([self.dsc_location] + [uuid])
+    dsc_file_path_spec = path_spec_factory.Factory.NewPathSpec(
+        self.file_entry.path_spec.TYPE_INDICATOR, **kwargs)
+
+    dsc_file_entry = path_spec_resolver.Resolver.OpenFileEntry(dsc_file_path_spec)
+
+    if not dsc_file_entry:
+      return None
+
+    dsc_file_object = dsc_file_entry.GetFileObject()
+    try:
+      return self.ParseFileObject(parser_mediator, dsc_file_object)
+    except (IOError, errors.ParseError) as exception:
+      message = (
+          'Unable to parse DSC file: {0:s} with error: '
+          '{1!s}').format(uuid, exception)
+      logger.warning(message)
+      parser_mediator.ProduceExtractionWarning(message)
+    return None
 
   def _ReadFileHeader(self, file_object):
     """Reads a dsc file header.
@@ -309,9 +338,6 @@ class DSCFileParser(
 
     file_header, _ = self._ReadStructureFromFileObject(
         file_object, 0, data_type_map)
-
-    if file_header.signature != b'hcsd':
-      raise errors.ParseError('Unsupported signature.')
 
     format_version = (
         file_header.major_format_version, file_header.minor_format_version)
@@ -360,6 +386,7 @@ class DSCFileParser(
       dsc_range = DSCRange()
       dsc_range.range_offset = range_descriptor.range_offset
       dsc_range.range_size = range_descriptor.range_size
+      dsc_range.data_offset = range_descriptor.data_offset
       dsc_range.uuid_index = range_descriptor.uuid_descriptor_index
       yield dsc_range
 
@@ -438,25 +465,31 @@ class DSCFileParser(
     Raises:
       WrongParser: when the file cannot be parsed.
     """
+    ret = DSCFile()
     file_header = self._ReadFileHeader(file_object)
 
     file_offset = file_object.tell()
 
-    self.ranges = list(self._ReadRangeDescriptors(
+    ret.ranges = list(self._ReadRangeDescriptors(
         file_object, file_offset, file_header.major_format_version,
         file_header.number_of_ranges))
 
     file_offset = file_object.tell()
 
-    self.uuids = list(self._ReadUUIDDescriptors(
+    ret.uuids = list(self._ReadUUIDDescriptors(
         file_object, file_offset, file_header.major_format_version,
         file_header.number_of_uuids))
 
-    for dsc_range in self.ranges:
-      dsc_uuid = self.uuids[dsc_range.uuid_index]
+    for dsc_range in ret.ranges:
+      dsc_uuid = ret.uuids[dsc_range.uuid_index]
 
       dsc_range.path = dsc_uuid.path
       dsc_range.uuid = dsc_uuid.sender_identifier
+    
+    #TODO(fryy) : Can we do this?
+    del ret.uuids
+
+    return ret
 
 class TraceV3FileParser(interface.FileObjectParser,
                         dtfabric_helper.DtFabricHelper):
@@ -490,12 +523,13 @@ class TraceV3FileParser(interface.FileObjectParser,
     0x11: "Fault"
   }
 
-  def __init__(self, timesync_parser, uuid_parser):
+  def __init__(self, timesync_parser, uuid_parser, dsc_parser):
     """Initializes a tracev3 file parser.
     """
     super(TraceV3FileParser, self).__init__()
     self.timesync_parser = timesync_parser
     self.uuid_parser = uuid_parser
+    self.dsc_parser = dsc_parser
     self.header = None
     self.catalogs = []
     self.chunksets = []
@@ -552,7 +586,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     time_string = 'N/A'
     if ts is not None:
       time = ts.wall_time + ct - ts.kernel_continuous_timestamp
-      time_string = self._ReadAPFSTime(time)
+      time_string = dfdatetime_apfs_time.APFSTime(timestamp=time).CopyToDateTimeString()
     return time_string
 
   def _FormatString(self, format_string, data):
@@ -605,11 +639,17 @@ class TraceV3FileParser(interface.FileObjectParser,
     catalog, offset_bytes = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
 
+    catalog.files = []
+
     for uuid in catalog.uuids:
       filename = uuid.hex.upper()
       logger.warning("Encountered UUID {0:s} in Catalog.".format(filename))
-      self.uuid_parser.FindFile(parser_mediator, filename)
-      # TODO(fryy): Check DSC too
+      found = self.dsc_parser.FindFile(parser_mediator, filename)
+      if not found:
+        found = self.uuid_parser.FindFile(parser_mediator, filename)
+        if not found:
+          raise errors.ParseError('Neither UUID nor DSC file found for UUID: {0:s}'.format(uuid.hex))
+      catalog.files.append(found)
 
     data_type_map = self._GetDataTypeMap(
       'tracev3_catalog_process_information_entry')
@@ -675,7 +715,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     return chunk_header
 
-  def _ReadChunkSet(self, file_object, file_offset, chunk_header, catalog,
+  def _ReadChunkSet(self, parser_mediator, file_object, file_offset, chunk_header, catalog,
                         chunkset_index):
     """Reads a chunk set.
 
@@ -737,7 +777,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       if chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_FIREHOSE:
         logger.warning("Processing a Firehose Chunk (0x6001)")
         self._ReadFirehoseChunkData(
-            chunkset_chunk_data, chunkset_chunk_header.chunk_data_size,
+            parser_mediator, chunkset_chunk_data, chunkset_chunk_header.chunk_data_size,
             data_offset, catalog)
       else:
         raise errors.ParseError(
@@ -752,17 +792,21 @@ class TraceV3FileParser(interface.FileObjectParser,
 
       data_offset += alignment
 
-  def _ParseNonActivity(self, tracepoint, proc_info, time):
+  def _ParseNonActivity(self, parser_mediator, tracepoint, proc_info, time):
     logger.warning("Parsing non-activity")
     offset = 0
     flags = tracepoint.flags
     data = tracepoint.data
 
-    ret = {}
+    event_data = AULEventData()
 
-    if len(self.uuid_parser.records) >= proc_info.main_uuid_index:
-      uuid_file = self.uuid_parser.records[proc_info.main_uuid_index]
-    else:
+    try:
+      dsc_file = self.catalogs[0].files[proc_info.catalog_dsc_index]
+    except IndexError:
+      dsc_file = None
+    try:
+      uuid_file = self.catalogs[0].files[proc_info.main_uuid_index]
+    except IndexError:
       uuid_file = None
 
     _NON_ACTIVITY_SENINTEL = 0x80000000
@@ -860,8 +904,8 @@ class TraceV3FileParser(interface.FileObjectParser,
         if not uuid_file:
           # raise errors.ParseError("Unable to continue without matching UUID file")
           return
-        ret['imageUUID'] = uuid_file.UUID
-        ret['senderImagePath'] = uuid_file.library_path
+        event_data.library_uuid = uuid_file.UUID
+        event_data.library = uuid_file.library_path
 
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
         # log_data_len = tracepoint.data_size
@@ -918,31 +962,27 @@ class TraceV3FileParser(interface.FileObjectParser,
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
       raise errors.ParseError("Loss Type not supported")
     
-    ret.update(
-      {
-        'message': self._FormatString(fmt, log_data),
-        'timestamp': time,
-        'thread': tracepoint.thread_identifier,
-        'log_type': self._LOG_TYPES.get(tracepoint.log_type, "Default"),
-        'activity_id': activity_id,
-        # 'parent_activity_id'
-        'pid': proc_info.pid,
-        'euid': proc_info.euid,
-        # 'ttl': 
-        'sub_sys': proc_info.items.get(subsystem_value, ('', ''))[0]
-        'category': proc_info.items.get(subsystem_value, ('', ''))[1]
-        'signpost_name': '',
-        'signpost_string': '',
-        # Library UUID? 'imageUUID'
-        # Process UUID? 'processImageUUID'
-      }
-    )
+    event_data.message = self._FormatString(fmt, log_data)
+    #TODO(fryy): Format in hex
+    event_data.thread_id = tracepoint.thread_identifier
+    event_data.level = self._LOG_TYPES.get(tracepoint.log_type, "Default")
+    event_data.activity_id = activity_id
+    event_data.pid = proc_info.pid
+    event_data.euid = proc_info.euid
+    event_data.subsystem = (proc_info.items.get(subsystem_value, ('', '')))[0]
+    event_data.category = (proc_info.items.get(subsystem_value, ('', '')))[1]
+    # 'signpost_name': '',
+    # 'signpost_string': '',
+    # Library UUID? 'imageUUID'
+    # Process UUID? 'processImageUUID'
+    # 'sender_image_path': uuid_file.library_path,
+    # Process Image Path
+    # 'ttl'
 
-    logger.warning("!! Log Line !! : {0:s}".format(ret))
+    event = time_events.DateTimeValuesEvent(dfdatetime_apfs_time.APFSTime(timestamp=time), plaso_definitions.TIME_DESCRIPTION_RECORDED)
+    parser_mediator.ProduceEventWithEventData(event, event_data)
 
-    return ret
-
-  def _ParseTracepointData(self, tracepoint, proc_info, time):
+  def _ParseTracepointData(self, parser_mediator, tracepoint, proc_info, time):
     """Parses a log line"""
 
     logger.warning("Parsing log line")
@@ -950,10 +990,10 @@ class TraceV3FileParser(interface.FileObjectParser,
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY:
       if log_type == 0x80:
         raise errors.ParseError("Non Activity Signpost ??")
-      self._ParseNonActivity(tracepoint, proc_info, time)
+      self._ParseNonActivity(parser_mediator, tracepoint, proc_info, time)
     return
 
-  def _ReadFirehoseChunkData(self, chunk_data, chunk_data_size, data_offset, catalog):
+  def _ReadFirehoseChunkData(self, parser_mediator, chunk_data, chunk_data_size, data_offset, catalog):
     """Reads firehose chunk data.
 
     Args:
@@ -994,7 +1034,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       ct = firehose_header.base_continuous_time + (firehose_tracepoint.continuous_time_lower | (firehose_tracepoint.continuous_time_upper << 32))
       ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
       time = ts.wall_time + ct - ts.kernel_continuous_timestamp
-      self._ParseTracepointData(firehose_tracepoint, proc_info, time)
+      self._ParseTracepointData(parser_mediator, firehose_tracepoint, proc_info, time)
 
       chunk_data_offset += 24 + firehose_tracepoint.data_size
       _, alignment = divmod(chunk_data_offset, 8)
@@ -1056,7 +1096,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       if chunk_header.chunk_tag == self._CHUNK_TAG_CHUNKSET:
         logger.warning("Processing a CHUNKSET (0x600D)")
         self._ReadChunkSet(
-          file_object, file_offset, chunk_header, catalog, chunkset_index)
+          parser_mediator, file_object, file_offset, chunk_header, catalog, chunkset_index)
         chunkset_index += 1
 
       file_offset += chunk_header.chunk_data_size
@@ -1066,6 +1106,23 @@ class TraceV3FileParser(interface.FileObjectParser,
         alignment = 8 - alignment
 
       file_offset += alignment
+
+
+class AULEventData(events.EventData):
+  DATA_TYPE = 'mac:aul:event'
+
+  def __init__(self):
+    """Initializes event data."""
+    super(AULEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.activity_id = None
+    self.category = None
+    self.euid = None
+    self.level = None
+    self.library = None
+    self.message = None
+    self.pid = None
+    self.subsystem = None
+    self.thread_id = None
 
 
 class AULParser(interface.FileEntryParser, dtfabric_helper.DtFabricHelper):
@@ -1080,6 +1137,7 @@ class AULParser(interface.FileEntryParser, dtfabric_helper.DtFabricHelper):
     self.timesync_parser = TimesyncParser()
     self.tracev3_parser = None
     self.uuid_parser = None
+    self.dsc_parser = None
 
   @classmethod
   def GetFormatSpecification(cls):
@@ -1116,8 +1174,9 @@ class AULParser(interface.FileEntryParser, dtfabric_helper.DtFabricHelper):
     self.timesync_parser.ParseAll(parser_mediator, file_entry, file_system)
 
     self.uuid_parser = UUIDFileParser(file_entry, file_system)
+    self.dsc_parser = DSCFileParser(file_entry, file_system)
 
-    self.tracev3_parser = TraceV3FileParser(self.timesync_parser, self.uuid_parser)
+    self.tracev3_parser = TraceV3FileParser(self.timesync_parser, self.uuid_parser, self.dsc_parser)
 
     try:
       self.tracev3_parser.ParseFileObject(parser_mediator, file_object)
@@ -1127,9 +1186,5 @@ class AULParser(interface.FileEntryParser, dtfabric_helper.DtFabricHelper):
           '[{0:s}] unable to parse tracev3 file {1:s} with error: {2!s}'.format(
               self.NAME, display_name, exception))
 
-    pass
-    # event = time_events.DateTimeValuesEvent(date_time=datetime.now())
-    # event_data = AULFileEventData()
-    # parser_mediator.ProduceEventWithEventData(event, event_data)
 
 manager.ParsersManager.RegisterParser(AULParser)

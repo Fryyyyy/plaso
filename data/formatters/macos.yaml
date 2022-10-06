@@ -97,6 +97,23 @@ short_message:
 - 'Facility: {facility}'
 ---
 type: 'conditional'
+data_type: 'mac:asl:event'
+message:
+- 'Level: {level}'
+- 'Subsystem: {subsystem}'
+- 'Thread ID: {thread_id}'
+- 'PID: {pid}'
+- 'EUID: {euid}'
+- 'Library: {library}'
+- 'Library UUID: {library_uuid}'
+- 'Activity ID: {activity_id}'
+- 'Category: {category}'
+- 'Message: {message}',
+short_message:
+- 'Subsystem: {subsystem}'
+- 'Message: {message}'
+---
+type: 'conditional'
 data_type: 'mac:asl:file'
 boolean_helpers:
 - input_attribute: 'is_dirty'
