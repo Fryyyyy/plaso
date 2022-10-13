@@ -197,9 +197,7 @@ attributes:
   byte_order: little-endian
 members:
 - name: boot_uuid
-  type: sequence
-  element_data_type: uuid_be
-  elements_data_size: 16
+  data_type: uuid_be
 - name: logd_pid
   data_type: uint32
 - name: logd_exit_status
@@ -231,20 +229,14 @@ members:
 - name: continuous_time_data
   data_type: uint64
   condition: tracev3_header_subchunk.sub_chunk_tag == 0x6100
-- name: systeminfo_subchunk
-  type: sequence
-  element_data_type: tracev3_header_systeminfo_subchunk
-  number_of_elements: 1
+- name: systeminfo_subchunk_data
+  data_type: tracev3_header_systeminfo_subchunk
   condition: tracev3_header_subchunk.sub_chunk_tag == 0x6101
-- name: generation_subchunk
-  type: sequence
-  element_data_type: tracev3_header_generation_subchunk
-  number_of_elements: 1
+- name: generation_subchunk_data
+  data_type: tracev3_header_generation_subchunk
   condition: tracev3_header_subchunk.sub_chunk_tag == 0x6102
-- name: timezone_subchunk
-  type: sequence
-  element_data_type: tracev3_header_timezone_subchunk
-  number_of_elements: 1
+- name: timezone_subchunk_data
+  data_type: tracev3_header_timezone_subchunk
   condition: tracev3_header_subchunk.sub_chunk_tag == 0x6103
 ---
 name: tracev3_header
@@ -300,15 +292,22 @@ attributes:
   byte_order: little-endian
 members:
 - name: size
+# UnifiedLogReader: ref_data_size
   data_type: uint32
 - name: unknown
   data_type: uint32
 - name: catalog_uuid_index
+# UnifiedLogReader: uuid_file_index
   data_type: uint16
 - name: load_address
   type: stream
   element_data_type: byte
   number_of_elements: 6
+# UnifiedLogReader: ref_v_offset 4 bytes
+#                   ref_id       2 bytes
+# Mandiant:
+# Adds padding to bring it up to uint64
+# Used in message.rs:305
 ---
 name: tracev3_catalog_subsystem_entry
 type: structure
@@ -330,16 +329,22 @@ attributes:
   byte_order: little-endian
 members:
 - name: index
+# UnifiedLogReader "id"
   data_type: uint16
 - name: unknown1
+# UnifiedLogReader "flags"
   data_type: uint16
 - name: main_uuid_index
+# UnifiedLogReader "file_id"
   data_type: uint16
 - name: catalog_dsc_index
+# UnifiedLogReader "dsc_file_index"
   data_type: uint16
 - name: first_number_proc_id
+# UnifiedLogReader "proc_id1"
   data_type: uint64
 - name: second_number_proc_id
+# UnifiedLogReader "proc_id2"
   data_type: uint32
 - name: pid
   data_type: uint32
@@ -348,6 +353,7 @@ members:
 - name: unknown2
   data_type: uint32
 - name: num_uuid_entries
+# UnifiedLogReader "num_extra_uuid_refs"
   data_type: uint32
 - name: unknown3
   data_type: uint32
@@ -436,6 +442,31 @@ members:
 #  element_data_type: tracev3_catalog_subchunk
 #  number_of_elements: tracev3_catalog.number_of_sub_chunks
 ---
+name: tracev3_oversize_header
+type: structure
+description: TraceV3 firehose header.
+attributes:
+  byte_order: little-endian
+members:
+- name: first_number_proc_id
+  data_type: uint64
+- name: second_number_proc_id
+  data_type: uint32
+- name: ttl
+  data_type: uint32
+- name: continuous_time
+  data_type: uint64
+- name: data_ref_index
+  data_type: uint32
+- name: public_data_size
+  data_type: uint16
+- name: private_data_size
+  data_type: uint16
+- name: data
+  type: stream
+  element_data_type: byte
+  elements_data_size: tracev3_oversize_header.public_data_size + tracev3_oversize_header.private_data_size
+---
 name: tracev3_firehose_header
 type: structure
 description: TraceV3 firehose header.
@@ -480,12 +511,6 @@ members:
   data_type: uint16
 - name: message_data_size
   data_type: uint16
-- name: message
-  type: string
-  encoding: utf8
-  element_data_type: char
-  elements_terminator: "\x00"
-  elements_data_size: tracev3_firehose_tracepoint_data_item_string_type.message_data_size
 ---
 name: tracev3_firehose_tracepoint_data_item
 type: structure
@@ -629,9 +654,7 @@ members:
 - name: unknown
   data_type: uint32
 - name: boot_uuid
-  type: sequence
-  element_data_type: uuid_be
-  elements_data_size: 16
+  data_type: uuid_be
 - name: timebase_numerator
   data_type: uint32
 - name: timebase_denominator
