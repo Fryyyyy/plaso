@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """The Apple Unified Logging (AUL) file parser."""
 
+import csv
 import datetime
 import os
 import re
 
 import lz4.block
 
+import plistlib
+
 from dfdatetime import apfs_time as dfdatetime_apfs_time
+from dfdatetime import posix_time as dfdatetime_posix_time
 
 from dfvfs.helpers import file_system_searcher
 from dfvfs.lib import definitions
@@ -273,13 +277,13 @@ class DSCUUID(object):
 
 
 class DSCFile(object):
-  def __init__(self):
+  def __init__(self, uuid):
     super(DSCFile, self).__init__()
     self.ranges = []
     self.uuids = []
+    self.UUID = uuid
 
   def ReadFormatString(self, offset):
-    #TODO(fryy): Verify this?
     for range in self.ranges:
       if offset >= range.range_offset and offset < (range.range_offset + range.range_size):
         return range
@@ -321,7 +325,7 @@ class DSCFileParser(
 
     dsc_file_object = dsc_file_entry.GetFileObject()
     try:
-      return self.ParseFileObject(parser_mediator, dsc_file_object)
+      return self.ParseFileObject(parser_mediator, dsc_file_object, uuid)
     except (IOError, errors.ParseError) as exception:
       message = (
           'Unable to parse DSC file: {0:s} with error: '
@@ -463,7 +467,7 @@ class DSCFileParser(
 
     return uuid_path
 
-  def ParseFileObject(self, parser_mediator, file_object):
+  def ParseFileObject(self, parser_mediator, file_object, uuid):
     """Parses a shared-cache strings (dsc) file-like object.
 
     Args:
@@ -473,7 +477,7 @@ class DSCFileParser(
     Raises:
       WrongParser: when the file cannot be parsed.
     """
-    ret = DSCFile()
+    ret = DSCFile(uuid)
     file_header = self._ReadFileHeader(file_object)
 
     file_offset = file_object.tell()
@@ -534,6 +538,11 @@ class TraceV3FileParser(interface.FileObjectParser,
   _CHUNK_TAG_CATALOG = 0x600B
   _CHUNK_TAG_CHUNKSET = 0x600D
 
+  # Statedump Types
+  _STATETYPE_PLIST = 0x1
+  _STATETYPE_PROTOBUF = 0x2
+  _STATETYPE_CUSTOM = 0x3
+
   # Activity Types
   _FIREHOSE_LOG_ACTIVITY_TYPE_ACTIVITY = 0x2
   _FIREHOSE_LOG_ACTIVITY_TYPE_TRACE = 0x3
@@ -566,7 +575,8 @@ class TraceV3FileParser(interface.FileObjectParser,
   }
 
   # Taken from https://github.com/mandiant/macos-UnifiedLogs/blob/main/src/unified_log.rs#L203
-  format_strings_re = re.compile(r"(%(?:(?:\{[^}]+}?)(?:[-+0#]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l|ll|w|I|z|t|q|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@}]|(?:[-+0 #]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l||q|t|ll|w|I|z|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@%]))")
+  # format_strings_re = re.compile(r"(%(?:(?:\{[^}]+}?)(?:[-+0#]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l|ll|w|I|z|t|q|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@}]|(?:[-+0 #]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l||q|t|ll|w|I|z|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@%]))")
+  format_strings_re = re.compile(r"%(\{[^\}]{1,64}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFP])")
 
   def __init__(self, timesync_parser, uuid_parser, dsc_parser):
     """Initializes a tracev3 file parser.
@@ -574,6 +584,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     super(TraceV3FileParser, self).__init__()
     self.boot_uuid_ts_list = None
     self.catalog = None
+    self.catalog_files = []
     self.chunksets = []
     self.dsc_parser = dsc_parser
     self.header = None
@@ -642,99 +653,164 @@ class TraceV3FileParser(interface.FileObjectParser,
       else:
         return data[0][2]
 
+    int8_data_type_map = self._GetDataTypeMap('char')
+    uint8_data_type_map = self._GetDataTypeMap('uint8')
+    int32_data_type_map = self._GetDataTypeMap('int32')
+    uint32_data_type_map = self._GetDataTypeMap('uint32')
+    float32_data_type_map = self._GetDataTypeMap('float32')
+    int64_data_type_map = self._GetDataTypeMap('int64')
+    uint64_data_type_map = self._GetDataTypeMap('uint64')
+    float64_data_type_map = self._GetDataTypeMap('float64')
+
     output = ""
     i = 0
     last_start_index = 0
-    replacements = []
-    for match in self.format_strings_re.finditer(format_string):
-      output = format_string[last_start_index:match.start()]
+    for match in self.format_strings_re.finditer(format_string.replace("%%", "~~")):
+      data_map = None
+
+      output += format_string[last_start_index:match.start()].replace('%%', '%')
       last_start_index = match.end()
       if match.group().startswith("% "):
         continue
-        
-      if match == "%%":
-        output += "%"
-        continue
 
-      if i > len(data):
+      if i >= len(data):
         output += "<decode: missing data>"
         continue
 
-      if match.group().startswith("%{") and match.group().endswith("}"):
-        output += match[1:]
-        continue
-      
-      # Item type, Item Size, Item
-      if (data[i][0] in self._FIREHOSE_ITEM_PRIVATE_STRING_TYPES) and len(data[i][2]) == 0 and data[i][1] == 0 or (data[i][0] == self._FIREHOSE_ITEM_STRING_PRIVATE and data[i][1] == 0x8000):
+      data_item = data[i]
+
+      custom_specifier = match.group(1)
+      if custom_specifier is not None and custom_specifier not in ['{time_t}', '{BOOL}', '{public}', '{private}']:
+        logger.warning("Custom specifier not supported")
+      flags_width_precision = match.group(2).replace('\'', '')
+      length_modifier = match.group(3)
+      specifier = match.group(4)
+      data_type = data_item[0]
+      data_size = data_item[1]
+      raw_data  = data_item[2]
+
+      #TODO(fryy): can also do data_size == 0 & data_type == private ?
+      if (data_type in self._FIREHOSE_ITEM_PRIVATE_STRING_TYPES) and len(raw_data) == 0 and (data_size == 0 or (data_type == self._FIREHOSE_ITEM_STRING_PRIVATE and data_size == 0x8000)):
         output += "<private>"
-      if match.group().startswith("%{"):
-        (format, format_type) = match.group().split("}", 1)
-        self._ParseFormatter("}"+format_type, data, i)
-        # parse_type_formatter
-        raise errors.ParseError("parse_type_formatter not supported")
-      else:
-        # parse_formatter
-        raise errors.ParseError("parse_formatter not supported")
-      
-      if data[i][0] in self._FIREHOSE_ITEM_PRECISION_TYPES:
         i += 1
+        continue
 
-#    data_items = []
-#    new_format_string = format_string.replace('%@', '%s').replace("%hh", "%")
-#    for item in data:
-#      if item[0] == 0x2: # Number ?
-#        data_items.append(int.from_bytes(item[2], 'little'))
-#      else:
-#        data_items.append(item[2])
-#    x = new_format_string # % tuple(data_items)
+      if (specifier not in ('p', 'P', 's', 'S')) and '*' in flags_width_precision:
+        raise errors.ParseError("* not supported")
+
+      if specifier in ('d', 'D', 'i', 'u', 'U', 'x', 'X', 'o', 'O'):
+        number = 0
+        if data_size == 0:
+          if data_type & self._FIREHOSE_ITEM_STRING_PRIVATE:
+            output += '<private>'
+          else:
+            raise errors.ParseError("Size 0 in int fmt {0:s} // data {1!s}".format(format_string, data_item))
+        else:
+          if specifier in ('d', 'D'):
+            specifier = 'd'
+            if data_size == 1:
+              data_map = int8_data_type_map
+            elif data_size == 4:
+              data_map = int32_data_type_map
+            elif data_size == 8:
+              data_map = int64_data_type_map
+            else:
+              raise errors.ParseError("Unknown data_size for signed int: {0:d} // fmt {1:s}".format(data_size, format_string))
+          else:
+            if data_size == 1:
+              data_map = uint8_data_type_map
+            elif data_size == 4:
+              data_map = uint32_data_type_map
+            elif data_size == 8:
+              data_map = uint64_data_type_map
+            else:
+              raise errors.ParseError("Unknown data_size for unsigned int: {0:d} // fmt {1:s}".format(data_size, format_string))
+            if specifier in ('u', 'U'):
+              specifier = 'd'
+            if specifier == 'O':
+              specifier = 'o'
+            if specifier == 'i':
+              specifier = 'd'
+          format_code = '{:' + flags_width_precision + specifier + '}'
+          number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
+          #TODO(fryy): Delete
+          if ('%' + flags_width_precision + specifier) % number != format_code.format(number):
+            raise errors.ParseError("FRY FIX")
+          if custom_specifier == "{BOOL}":
+            if bool(format_code.format(number)):
+              output += "YES"
+            else:
+              output += "NO"
+          elif custom_specifier == "{bool}":
+            output += str(bool(format_code.format(number))).lower()
+          elif custom_specifier == "{time_t}":
+            # Timestamp in seconds ?
+            output += dfdatetime_posix_time.PosixTime(timestamp=number).CopyToDateTimeString()
+          else:
+            output += format_code.format(number)
+      elif specifier in ('f', 'e', 'E', 'g', 'G', 'a', 'A', 'F'):
+        number = 0
+        if data_size == 0:
+          if data_type & self._FIREHOSE_ITEM_STRING_PRIVATE:
+            output += '<private>'
+          else:
+            raise errors.ParseError("Size 0 in float fmt {0:s} // data {1!s}".format(format_string, data_item))
+        else:
+          if data_size == 4:
+            data_map = float32_data_type_map
+          elif data_size == 8:
+            data_map = float64_data_type_map
+          else:
+            raise errors.ParseError("Unknown data_size for float int: {0:d} // fmt {1:s}".format(data_size, format_string))
+          number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
+          if flags_width_precision:
+            format_code = '{:' + flags_width_precision + specifier + '}'
+            output += format_code.format(number)
+          else:
+            output += str(number)
+      elif specifier in ('c', 'C', 's', 'S', '@'):
+        chars = ''
+        if data_size == 0:
+          if data_type == 0x40:
+            chars = '(null)'
+          elif data_type & self._FIREHOSE_ITEM_STRING_PRIVATE:
+            chars = '<private>'
+        else:
+          chars = raw_data
+          if "*" in flags_width_precision:
+            # TODO explore {}.format()
+            raise errors.ParseError("* in flags_width_precision")
+          chars = ('%' + (flags_width_precision if "*" in flags_width_precision else '')  + "s") % chars
+        output += chars
+      elif specifier == 'P':
+        raise errors.ParseError("pointer not supported")
+      elif specifier == 'p':
+        if data_size == 0:
+          if data_type & self._FIREHOSE_ITEM_STRING_PRIVATE:
+            output += '<private>'
+          else:
+            raise errors.ParseError("Size 0 in pointer fmt {0:s} // data {1!s}".format(format_string, data_item))
+        else:
+          if data_size == 4:
+            data_map = uint32_data_type_map
+          elif data_size == 8:
+            data_map = uint64_data_type_map
+          else:
+            raise errors.ParseError("Unknown data_size for pointer: {0:d} // fmt {1:s}".format(data_size, format_string))
+          number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
+          if flags_width_precision:
+            raise errors.ParseError("Fry look at this, how to fix")
+          output += hex(number)
+      else:
+        raise errors.ParseError("UNKNOWN SPECIFIER")
+
+      i += 1
+
+    if last_start_index < len(format_string):
+      output += format_string[last_start_index:]
+
     return output
-
-  def _ParseFormatter(self, format, data, index):
-    ret = data[2]
-    precision_value = 0
-    if data[0] in self._FIREHOSE_ITEM_PRECISION_TYPES:
-      precision_value = data[1]
-      index += 1
     
-    # TODO(fryy): Do we need this?
-    #if format.lower().endswith('c') and data[0] in self._FIREHOSE_ITEM_NUMBER_TYPES + [self._FIREHOSE_ITEM_STRING_PRIVATE]:
-    #  data[2] = str(data[2])
-    width_index = 1
-
-    for (i, char) in enumerate(format):
-      if i == 0:
-        continue
-      
-      left_justify, hashtag, pad_zero, plus_minus = False
-      if char == "-":
-        left_justify = True
-        continue
-      if char == "+":
-        plus_minus = True
-        continue
-      if char == "#":
-        hashtag = True
-        continue
-      if char == "0":
-        pad_zero = True
-        continue
-      width_index = i
-      break
-
-    # Split into numbers / letters
-    width = ""
-    results = re.findall(r'(\d*)(\D*)', format[width_index:])
-    if len(results) != 2:
-      formatter = format[width_index:]
-    else:
-      (width, formatter) = results[0]
-
-    if formatter.startswith('*'):
-      if data[0] == 0x0 and data[1] == 0:
-        precision_value = data[1]
-        index += 1
-      
-      width_value = 
 
   def _ReadHeader(self, file_object, file_offset):
     """Reads a Header.
@@ -752,14 +828,14 @@ class TraceV3FileParser(interface.FileObjectParser,
     self.header, _ = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
 
-    logger.warning('Header data: CT {0:d} // Bias {1:d}'.format(self.header.continuous_time, self.header.bias_in_minutes))
-    logger.warning('SI Info: BVS: {0:s} // HMS: {1:s}'.format(self.header.systeminfo_subchunk.systeminfo_subchunk_data.build_version_string, self.header.systeminfo_subchunk.systeminfo_subchunk_data.hardware_model_string))
-    logger.warning('Boot UUID: {0:s}'.format(self.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex))
-    logger.warning('TZ Info: {0:s}'.format(self.header.timezone_subchunk.timezone_subchunk_data.path_to_tzfile))
+    logger.info('Header data: CT {0:d} // Bias {1:d}'.format(self.header.continuous_time, self.header.bias_in_minutes))
+    logger.info('SI Info: BVS: {0:s} // HMS: {1:s}'.format(self.header.systeminfo_subchunk.systeminfo_subchunk_data.build_version_string, self.header.systeminfo_subchunk.systeminfo_subchunk_data.hardware_model_string))
+    logger.info('Boot UUID: {0:s}'.format(self.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex))
+    logger.info('TZ Info: {0:s}'.format(self.header.timezone_subchunk.timezone_subchunk_data.path_to_tzfile))
 
     self.boot_uuid_ts_list = self._GetBootUuidTimeSyncList(
         self.header.generation_subchunk.generation_subchunk_data.boot_uuid)
-    logger.error('Tracev3 Header Timestamp: %s', self._TimestampFromContTime(
+    logger.info('Tracev3 Header Timestamp: %s', self._TimestampFromContTime(
           self.header.continuous_time_subchunk.continuous_time_data))
 
   def _ReadCatalog(self, parser_mediator, file_object, file_offset):
@@ -778,21 +854,36 @@ class TraceV3FileParser(interface.FileObjectParser,
     catalog, offset_bytes = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
 
-    logger.warning("Catalog data: NumProcs {0:d} // NumSubChunks {1:d} // EarliestFirehoseTS {2:d}".format(catalog.number_of_process_information_entries, catalog.number_of_sub_chunks, catalog.earliest_firehose_timestamp))
-    logger.warning("Num UUIDS: {0:d} // Num SubSystemStrings {1:d}".format(len(catalog.uuids), len(catalog.sub_system_strings)))
+    logger.info("Catalog data: NumProcs {0:d} // NumSubChunks {1:d} // EarliestFirehoseTS {2:d}".format(catalog.number_of_process_information_entries, catalog.number_of_sub_chunks, catalog.earliest_firehose_timestamp))
+    logger.info("Num UUIDS: {0:d} // Num SubSystemStrings {1:d}".format(len(catalog.uuids), len(catalog.sub_system_strings)))
 
     catalog.files = []
 
-    #TODO(fryy): Cache these so we don't have to reparse them
     for uuid in catalog.uuids:
+      found = None
+      found_in_cache = False
       filename = uuid.hex.upper()
-      logger.warning("Encountered UUID {0:s} in Catalog.".format(filename))
-      found = self.dsc_parser.FindFile(parser_mediator, filename)
+      logger.info("Encountered UUID {0:s} in Catalog.".format(filename))
+      for file in self.catalog_files:
+        if file.UUID == filename:
+          found = file
+          found_in_cache = True
+          logger.info("Found in cache")
+          break
+      if not found:
+        found = self.dsc_parser.FindFile(parser_mediator, filename)
       if not found:
         found = self.uuid_parser.FindFile(parser_mediator, filename)
         if not found:
           raise errors.ParseError('Neither UUID nor DSC file found for UUID: {0:s}'.format(uuid.hex))
-      catalog.files.append(found)
+        else:
+          if not found_in_cache:
+            self.catalog_files.append(found)
+          catalog.files.append(found)
+      else:
+        if not found_in_cache:
+          self.catalog_files.append(found)
+        catalog.files.append(found)
 
     data_type_map = self._GetDataTypeMap(
       'tracev3_catalog_process_information_entry')
@@ -804,7 +895,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       process_entry.main_uuid = catalog.uuids[process_entry.main_uuid_index]
       process_entry.dsc_uuid = catalog.uuids[process_entry.catalog_dsc_index]
       process_entry.items = {}
-      logger.warning("Process Entry data: PID {0:d} // EUID {1:d}".format(process_entry.pid, process_entry.euid))
+      logger.info("Process Entry data: PID {0:d} // EUID {1:d}".format(process_entry.pid, process_entry.euid))
       for subsystem in process_entry.subsystems:
         offset = 0
         subsystem_string = None
@@ -813,17 +904,12 @@ class TraceV3FileParser(interface.FileObjectParser,
           if subsystem_string is None:
             if offset >= subsystem.subsystem_offset:
               subsystem_string = string
-              offset += len(string) + 1
-              continue
-            else:
-              offset += len(string) + 1
           if category_string is None:
             if offset >= subsystem.category_offset:
               category_string = string
-              break
-            offset += len(string) + 1
+          offset += len(string) + 1
         process_entry.items[subsystem.identifier] = (subsystem_string, category_string)
-        logger.warning("Process Entry coalesce: Subsystem {0:s} // Category {1:s}".format(subsystem_string, category_string))
+        logger.info("Process Entry coalesce: Subsystem {0:s} // Category {1:s}".format(subsystem_string, category_string))
       catalog.process_entries.append(process_entry)
       offset_bytes += new_bytes
 
@@ -834,7 +920,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     for _ in range(catalog.number_of_sub_chunks):
       subchunk, new_bytes = self._ReadStructureFromFileObject(
         file_object, file_offset+offset_bytes, data_type_map)
-      logger.warning("Catalog Subchunk data: Size {0:d}".format(subchunk.uncompressed_size))
+      logger.info("Catalog Subchunk data: Size {0:d}".format(subchunk.uncompressed_size))
       catalog.subchunks.append(subchunk)
       offset_bytes += new_bytes
 
@@ -886,7 +972,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     lz4_block_header, _ = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
-    logger.warning("Read LZ4 block: Compressed size {0:d} // Uncompressed size {1:d}".format(lz4_block_header.compressed_data_size, lz4_block_header.uncompressed_data_size))
+    logger.info("Read LZ4 block: Compressed size {0:d} // Uncompressed size {1:d}".format(lz4_block_header.compressed_data_size, lz4_block_header.uncompressed_data_size))
 
     end_of_compressed_data_offset = 12 + lz4_block_header.compressed_data_size
 
@@ -896,7 +982,7 @@ class TraceV3FileParser(interface.FileObjectParser,
           uncompressed_size=lz4_block_header.uncompressed_data_size)
 
     elif lz4_block_header.signature == b'bv4-':
-      logger.warning("It was already uncompressed!")
+      logger.info("It was already uncompressed!")
       uncompressed_data = chunk_data[12:end_of_compressed_data_offset]
 
     else:
@@ -915,19 +1001,25 @@ class TraceV3FileParser(interface.FileObjectParser,
       chunkset_chunk_header = self._ReadStructureFromByteStream(
           uncompressed_data[data_offset:], data_offset, data_type_map)
       data_offset += 16
-      logger.warning("Reading Decompressed Chunk: Size {0:d}".format(chunkset_chunk_header.chunk_data_size))
+      logger.info("Reading Decompressed Chunk: Size {0:d}".format(chunkset_chunk_header.chunk_data_size))
 
       data_end_offset = data_offset + chunkset_chunk_header.chunk_data_size
       chunkset_chunk_data = uncompressed_data[data_offset:data_end_offset]
 
       if chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_FIREHOSE:
-        logger.warning("Processing a Firehose Chunk (0x6001)")
+        logger.info("Processing a Firehose Chunk (0x6001)")
         self._ReadFirehoseChunkData(
             parser_mediator, chunkset_chunk_data, chunkset_chunk_header.chunk_data_size,
             data_offset)
       elif chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_OVERSIZE:
-        logger.warning("Processing an Oversize Chunk (0x6002) -- not supported")
+        logger.info("Processing an Oversize Chunk (0x6002)")
         self._ReadOversizeChunkData(
+          parser_mediator, chunkset_chunk_data, chunkset_chunk_header.chunk_data_size,
+          data_offset
+        )
+      elif chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_STATEDUMP:
+        logger.info("Processing an Statedump Chunk (0x6003)")
+        self._ReadStatedumpChunkData(
           parser_mediator, chunkset_chunk_data, chunkset_chunk_header.chunk_data_size,
           data_offset
         )
@@ -945,7 +1037,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       data_offset += alignment
 
   def _ParseNonActivity(self, parser_mediator, tracepoint, proc_info, time):
-    logger.warning("Parsing non-activity")
+    logger.info("Parsing non-activity")
     offset = 0
     flags = tracepoint.flags
     data = tracepoint.data
@@ -982,13 +1074,27 @@ class TraceV3FileParser(interface.FileObjectParser,
     _HAS_CONTEXT_DATA = 0x1000
     _HAS_SIGNPOST_NAME = 0x8000
 
+    _FLAG_CHECK = 0xe
+    # Offset to format string is larger than normal
+    _HAS_LARGE_OFFSET = 0x20 
+    _HAS_LARGE_SHARED_CACHE = 0xc
+    # The log uses an alternative index number that points to the UUID
+    # file name in the Catalog which contains the format string
+    _HAS_ABSOLUTE = 0x8
+    # A UUID file contains the format string (main_exe)
+    _HAS_FMT_IN_UUID = 0x2
+    # DSC file contains the format string
+    _HAS_SHARED_CACHE = 0x4
+    # The UUID file name is in the log data (instead of the Catalog)
+    _HAS_UUID_RELATIVE = 0xa
+
     uint8_data_type_map = self._GetDataTypeMap('uint8')
     uint16_data_type_map = self._GetDataTypeMap('uint16')
     uint32_data_type_map = self._GetDataTypeMap('uint32')
     uint64_data_type_map = self._GetDataTypeMap('uint64')
 
     if flags & _CURRENT_AID:
-      logger.warning("Non-activity has current_aid")
+      logger.info("Non-activity has current_aid")
       
       activity_id = self._ReadStructureFromByteStream(
         data, offset, uint32_data_type_map)
@@ -1000,7 +1106,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         raise errors.ParseError("Incorrect sentinel value for Non-Activity")
     
     if flags & _PRIVATE_STRING_RANGE:
-      logger.warning("Non-activity has private_string_range (has_private_data flag)")
+      logger.info("Non-activity has private_string_range (has_private_data flag)")
       
       private_strings_offset = self._ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
@@ -1013,20 +1119,13 @@ class TraceV3FileParser(interface.FileObjectParser,
     unknown_message_string_reference  = self._ReadStructureFromByteStream(
         data[offset:], offset, uint32_data_type_map)
     offset += 4
-    logger.warning("Unknown PCID: {0:d}".format(unknown_message_string_reference))
+    logger.info("Unknown PCID: {0:d}".format(unknown_message_string_reference))
   
     if flags & _HAS_ALTERNATE_UUID:
       if flags & _HAS_MESSAGE_IN_UUIDTEXT:
-        logger.warning("Non-activity: Has Alternate UUID & Message in UUIDText")
-
+        logger.info("Non-activity: Has Alternate UUID & Message in UUIDText")
       else:
-        logger.warning("Non-activity: Has Alternate UUID & _NO_ Message in UUIDText")
-#        uuid_file_id = self._ReadStructureFromByteStream(
-#          data[offset:], offset, uint8_data_type_map)
-#        for extra_uuid in proc_info.uuids:
-#            logger.warning("Doing tha thing")
-            # if extra_uuid.
-#        offset += 1
+        logger.info("Non-activity: Has Alternate UUID & _NO_ Message in UUIDText")
 
     large_shared_cache = 0
     large_offset_data = 0
@@ -1035,90 +1134,86 @@ class TraceV3FileParser(interface.FileObjectParser,
     shared_cache = False
     absolute = False
     uuid_relative = False
-    # Flags ??
-    if flags & 0xe == 0x20:
+
+    if flags & _FLAG_CHECK == _HAS_LARGE_OFFSET:
       large_offset_data = self._ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.warning('Has large offset: {0:d}'.format(large_offset_data))
-      if flags & 0xc:
+      logger.info('Has large offset: {0:d}'.format(large_offset_data))
+      if flags & _HAS_LARGE_SHARED_CACHE:
         large_shared_cache = self._ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.warning('Has large shared cache: {0:d}'.format(large_shared_cache))
-    elif flags & 0xe == 0xc:
-      if flags & 0x20:
+        logger.info('Has large shared cache: {0:d}'.format(large_shared_cache))
+    elif flags & _FLAG_CHECK == _HAS_LARGE_SHARED_CACHE:
+      if flags & _HAS_LARGE_OFFSET:
         large_offset_data = self._ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.warning('Has large offset: {0:d}'.format(large_offset_data))
+        logger.info('Has large offset: {0:d}'.format(large_offset_data))
       large_shared_cache = self._ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.warning('Has large shared cache: {0:d}'.format(large_shared_cache))
-    elif flags & 0xe == 0x8:
-      logger.warning('Absolute')
+      logger.info('Has large shared cache: {0:d}'.format(large_shared_cache))
+    elif flags & _FLAG_CHECK == _HAS_ABSOLUTE:
+      logger.info('Absolute')
       absolute = True
-      if flags & 0x2 == 0:
-        logger.warning('Alt index')
+      if flags & _HAS_FMT_IN_UUID == 0:
+        logger.info('Alt index')
         uuid_file_index = self._ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-    elif flags & 0xe == 0x2:
-      logger.warning('main_exe')
-    elif flags & 0xe == 0x4:
-      logger.warning('shared_cache')
+    elif flags & _FLAG_CHECK == _HAS_FMT_IN_UUID:
+      logger.info('main_exe')
+    elif flags & _FLAG_CHECK == _HAS_SHARED_CACHE:
+      logger.info('shared_cache')
       shared_cache = True
-      if flags & 0x20:
+      if flags & _HAS_LARGE_OFFSET:
         large_offset_data = self._ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.warning('Has large offset: {0:d}'.format(large_offset_data))
-    elif flags & 0xe == 0xa:
-      logger.warning('uuid_relative')
+        logger.info('Has large offset: {0:d}'.format(large_offset_data))
+    elif flags & _FLAG_CHECK == _HAS_UUID_RELATIVE:
       uuid_relative = self._ReadStructureFromByteStream(
-          data[offset:], offset, uint64_data_type_map)
-      offset += 8
-
+          data[offset:], offset, self._GetDataTypeMap('uuid_be'))
+      offset += 16
+      logger.info('uuid_relative: {0:s}'.format(uuid_relative.hex))
     # Yes has subsys (1)
+    subsystem_value = ''
     if flags & _HAS_SUBSYSTEM:
       subsystem_value = self._ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.warning("Non-activity has subsystem: {0:d}".format(subsystem_value))
+      logger.info("Non-activity has subsystem: {0:d}".format(subsystem_value))
     
     # Yes has TTL (30)
     if flags & _HAS_TTL:
       ttl_value = self._ReadStructureFromByteStream(
         data[offset:], offset, uint8_data_type_map)
       offset += 1
-      logger.warning("Non-activity has TTL: {0:d}".format(ttl_value))
+      logger.info("Non-activity has TTL: {0:d}".format(ttl_value))
 
     if flags & _HAS_DATA_REF:
       # UnifiedLogReader: This is a ref to an object stored as type 0x0602 blob
       data_ref_id = self._ReadStructureFromByteStream(
-        data[offset:], offset, uint8_data_type_map)
+        data[offset:], offset, uint16_data_type_map)
       offset += 1
-      logger.warning("Non-activity with data reference: {0:d}".format(data_ref_id))
-
+      logger.info("Non-activity with data reference: {0:d}".format(data_ref_id))
 
     if flags & _HAS_SIGNPOST_NAME:
       raise errors.ParseError("Non-activity signpost not supported")
 
     if flags & _HAS_MESSAGE_IN_UUIDTEXT:
-      logger.warning("Non-activity has message in UUID Text file")
-      if flags & _HAS_ALTERNATE_UUID:
-        raise errors.ParseError("Non-activity with Alternate UUID not supported")
-        if flags & _HAS_SIGNPOST_NAME:
-          raise errors.ParseError("Non-activity signpost not supported")
+      logger.info("Non-activity has message in UUID Text file")
+      if flags & _HAS_ALTERNATE_UUID and flags & _HAS_SIGNPOST_NAME:
+        raise errors.ParseError("Non-activity with Alternate UUID and Signpost not supported")
       else:
         if not uuid_file:
-          # raise errors.ParseError("Unable to continue without matching UUID file")
+          raise errors.ParseError("Unable to continue without matching UUID file")
           return
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
-        # log_data_len = tracepoint.data_size
         if flags & _HAS_SIGNPOST_NAME:
-          raise errors.ParseError("Non-activity signpost not supported")
+          raise errors.ParseError("Non-activity signpost not supported (2)")
 
     # Read log data
     log_data = []
@@ -1134,28 +1229,38 @@ class TraceV3FileParser(interface.FileObjectParser,
       data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
-    logger.warning("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
+    logger.info("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
     (log_data, deferred_data_items, offset) = self._ReadItems(data_meta, data, offset)
 
+    backtrace_strings = []
     if flags & _HAS_CONTEXT_DATA != 0:
-      raise errors.ParseError("Backtrace data in Firehose log chunk unsupported")
+      logger.info("Backtrace data in Firehose log chunk")
+      backtrace_strings = ["Backtrace:\n"]
+      backtrace_data = self._ReadStructureFromByteStream(
+        data[offset:], offset, self._GetDataTypeMap('tracev3_backtrace'))
+      for idx in backtrace_data.indices:
+        try:
+          backtrace_strings.append("{0:s} +0x{1:d}\n".format(backtrace_data.uuids[idx].hex.upper(), backtrace_data.offsets[idx]))
+        except IndexError:
+          pass
+    elif len(data[offset:]) > 3:
+      if data[offset:offset+3] == r"\x01\x00\x18":
+        raise errors.ParseError("Backtrace signature without context -- firehose_logs.rs:330")
 
     for item in deferred_data_items:
       result = self._ReadStructureFromByteStream(
         data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))
-      logger.warning("End result: {0:s}".format(result))
-      log_data.append((item[0], item[2], result))
+      logger.info("End result: {0:s}".format(result))
+      log_data.insert(item[3], (item[0], item[2], result))
 
-    if flags & _HAS_DATA_REF:
-      logger.warning("Data Ref Not Supported")
     
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
       raise errors.ParseError("Loss Type not supported")
     
     dsc_range = DSCRange()
-    extra_offset_value_result = -1
+    extra_offset_value_result = tracepoint.format_string_location
     if shared_cache or large_shared_cache != 0:
-      if large_offset_data is not None:
+      if large_offset_data != 0:
         if large_offset_data != large_shared_cache / 2 and not shared_cache:
           large_offset_data = large_shared_cache / 2
           extra_offset_value = "{0:X}{1:08x}".format(large_offset_data, tracepoint.format_string_location)
@@ -1164,7 +1269,7 @@ class TraceV3FileParser(interface.FileObjectParser,
           extra_offset_value = "{0:X}{1:07x}".format(large_offset_data, tracepoint.format_string_location)
         else:
           extra_offset_value = "{0:X}{1:08x}".format(large_offset_data, tracepoint.format_string_location)
-      extra_offset_value_result = int(extra_offset_value, 16)
+        extra_offset_value_result = int(extra_offset_value, 16)
       (fmt, dsc_range) = self._ExtractSharedStrings(tracepoint.format_string_location, extra_offset_value_result, dsc_file)
     else:
       if absolute:
@@ -1173,25 +1278,26 @@ class TraceV3FileParser(interface.FileObjectParser,
         # extract_absolute_strings()
         raise errors.ParseError("Absolute not supported")
       if uuid_relative:
-        # extract_alt_uuid_strings
-        raise errors.ParseError("Alt UUID not supported")
-        pass
-      self._ExtractFormatStrings(tracepoint.format_string_location)
+        uuid_file = self._ExtractAltUUID(uuid_relative)
+        fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+      else:
+        self._ExtractFormatStrings(tracepoint.format_string_location, uuid_file)
 
     found = False
     if data_ref_id != 0:
       for oversize in self.oversize_data:
-        if oversize.first_proc_id == proc_info.first_number_proc_id and oversize.second_proc_id == proc_info.second_number_proc_id and oversize.data_ref == data_ref_id:
+        if oversize.first_proc_id == proc_info.first_number_proc_id and oversize.second_proc_id == proc_info.second_number_proc_id and oversize.data_ref_index == data_ref_id:
           log_data = oversize.strings
           found = True
           break
-    if not found:
-      logger.warning("Did not find any oversize log entries from Data Ref ID: {0:d}, First Proc ID: {1:d}, and Second Proc ID: {2:d}".format(data_ref_id, proc_info.first_number_proc_id, proc_info.second_number_proc_id))
+      if not found:
+        logger.info("Did not find any oversize log entries from Data Ref ID: {0:d}, First Proc ID: {1:d}, and Second Proc ID: {2:d}".format(data_ref_id, proc_info.first_number_proc_id, proc_info.second_number_proc_id))
 
     if fmt:
-      event_data.message = self._FormatString(fmt, log_data)
+      event_data.message = "".join(backtrace_strings) + self._FormatString(fmt, log_data)
     else:
       event_data.message = "UNKNOWN"
+      raise errors.ParseError("UNKNOWN")
     event_data.thread_id = hex(tracepoint.thread_identifier)
     event_data.level = self._LOG_TYPES.get(tracepoint.log_type, "Default")
     event_data.activity_id = hex(activity_id)
@@ -1199,9 +1305,11 @@ class TraceV3FileParser(interface.FileObjectParser,
     event_data.euid = proc_info.euid
     event_data.subsystem = (proc_info.items.get(subsystem_value, ('', '')))[0]
     event_data.category = (proc_info.items.get(subsystem_value, ('', '')))[1]
-    event_data.library = dsc_range.path
-    event_data.library_uuid = dsc_range.uuid.hex
-    logger.warning("Log line: {0!s}".format(event_data.message))
+    event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
+    event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.UUID
+    logger.info("Log line: {0!s}".format(event_data.message))
+    with open('/tmp/fryoutput.csv', 'a') as f:
+      csv.writer(f).writerow([time, event_data.message])
     # 'signpost_name': '',
     # 'signpost_string': '',
     # 'ttl'
@@ -1210,99 +1318,174 @@ class TraceV3FileParser(interface.FileObjectParser,
     parser_mediator.ProduceEventWithEventData(event, event_data)
 
   #TODO(fryy): Move
-  def _ExtractFormatStrings(self, original_offset):
-    logger.warning("Extracting format string from UUID file")
-    if original_offset & 0x80000000 != 0:
-      raise errors.ParseError("Dynamic offset not supported")
+  def _ExtractAltUUID(self, uuid):
+    uuid_file = [f for f in self.catalog_files if f.UUID == uuid.hex.upper()]
+    if len(uuid_file) != 1:
+      raise errors.ParseError("Couldn't find UUID file for {0:s}".format(uuid.hex))
+      return "UNKNOWN"
+    return uuid_file[0]
 
-    raise errors.ParseError("UUID not done yet")
+  def _ExtractFormatStrings(self, offset, uuid_file):
+    logger.info("Extracting format string from UUID file")
+    return uuid_file.ReadFormatString(offset)
 
   def _ExtractSharedStrings(self, original_offset, extra_offset, dsc_file):
-    logger.warning("Extracting format string from shared cache file (DSC)")
-    if original_offset & 0x80000000 != 0:
-      raise errors.ParseError("Dynamic offset not supported")
+    logger.info("Extracting format string from shared cache file (DSC)")
+
+    if original_offset & 0x80000000:
+      return ('%s', DSCRange())
 
     range = dsc_file.ReadFormatString(extra_offset)
     format_string = self._ReadStructureFromByteStream(
       range.string[extra_offset - range.range_offset:], 0, self._GetDataTypeMap('cstring'))
 
-    logger.warning("Fmt string: {0:s}".format(format_string))
+    logger.info("Fmt string: {0:s}".format(format_string))
     return (format_string, range)
 
   def _ReadItems(self, data_meta, data, offset):
     log_data = []
     deferred_data_items = []
-    for _ in range(data_meta.num_items):
+    for i in range(data_meta.num_items):
       data_item = self._ReadStructureFromByteStream(
         data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item'))
       offset += 2 + data_item.item_size
-      logger.warning("Item data: Type {0:d}".format(data_item.item_type))
+      logger.info("Item data: Type {0:d}".format(data_item.item_type))
       if data_item.item_type in self._FIREHOSE_ITEM_NUMBER_TYPES:
-        logger.warning("Number: {0!s}".format(data_item.item))
+        logger.info("Number: {0!s}".format(data_item.item))
         log_data.append((data_item.item_type, data_item.item_size, data_item.item))
-      if data_item.item_type == self._FIREHOSE_ITEM_STRING_PRIVATE or data_item.item_type in self._FIREHOSE_ITEM_PRIVATE_STRING_TYPES + self._FIREHOSE_ITEM_STRING_TYPES:
+      elif data_item.item_type == self._FIREHOSE_ITEM_STRING_PRIVATE or data_item.item_type in self._FIREHOSE_ITEM_PRIVATE_STRING_TYPES + self._FIREHOSE_ITEM_STRING_TYPES:
         offset -= data_item.item_size
         string_message = self._ReadStructureFromByteStream(
           data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item_string_type'))
         offset += data_item.item_size
         if string_message.message_data_size == 0:
           if data_item.item_type == 0x21 or data_item.item_type == 0x41:
-            logger.warning("<private>")
             log_data.append((data_item.item_type, data_item.item_size, "<private>"))
           else:
-            logger.warning("(null)")
             log_data.append((data_item.item_type, data_item.item_size, "(null)"))
         else:
-          deferred_data_items.append((data_item.item_type, string_message.offset, string_message.message_data_size))
+          deferred_data_items.append((data_item.item_type, string_message.offset, string_message.message_data_size, i))
         if data_item.item_type in self._FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
-          logger.warning("Unsupported arbitrary type -- firehose_log.rs:790")
+          raise errors.ParseError("Unsupported arbitrary type -- firehose_log.rs:790")
         if data_item.item_type == self._FIREHOSE_ITEM_STRING_BASE64_TYPE:
-          logger.warning("Unsupported base64 type -- firehose_log.rs:797")
-      if data_item.item_type in self._FIREHOSE_ITEM_PRECISION_TYPES:
+          raise errors.ParseError("Unsupported base64 type -- firehose_log.rs:797")
+      elif data_item.item_type in self._FIREHOSE_ITEM_PRECISION_TYPES:
         raise errors.ParseError("Precision types not supported -- firehose_log.rs:759")
-      if data_item.item_type == self._FIREHOSE_ITEM_SENSITIVE:
+      elif data_item.item_type == self._FIREHOSE_ITEM_SENSITIVE:
         raise errors.ParseError("Sensitive types not supported -- firehose_log.rs:764")
+      else:
+        raise errors.ParseError("Unsupported data type ??")
       if data_item.item_type & 0xF0 == 0x10:
-        logger.warning("Unsupported special case?? tracev3_file.py:479")
+        raise errors.ParseError("Unsupported special case?? tracev3_file.py:479")
     return (log_data, deferred_data_items, offset)
 
   def _ParseTracepointData(self, parser_mediator, tracepoint, proc_info, time):
     """Parses a log line"""
 
-    logger.warning("Parsing log line")
+    logger.info("Parsing log line")
     log_type = self._LOG_TYPES.get(tracepoint.log_type, "Default")
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY:
       if log_type == 0x80:
         raise errors.ParseError("Non Activity Signpost ??")
       self._ParseNonActivity(parser_mediator, tracepoint, proc_info, time)
+    else:
+      raise errors.ParseError("Unsupported log activity type: {}".format(tracepoint.log_activity_type))
     return
 
-  def _ReadOversizeChunkData(self, parser_mediator, chunk_data, chunk_data_size, data_offset):
-    logger.warning("Reading Oversize")
-    data_type_map = self._GetDataTypeMap('tracev3_oversize_header')
+  def _ReadStatedumpChunkData(self, parser_mediator, chunk_data, chunk_data_size, data_offset):
+    logger.info("Reading Statedump")
+    data_type_map = self._GetDataTypeMap('tracev3_statedump')
 
-    oversize_header = self._ReadStructureFromByteStream(
+    statedump = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
-    logger.warning("Oversize Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}".format(oversize_header.first_number_proc_id, oversize_header.second_number_proc_id, oversize_header.ttl, oversize_header.continuous_time))
+    logger.info("Statedump data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d} // String Name {4:s}".format(statedump.first_number_proc_id, statedump.second_number_proc_id, statedump.ttl, statedump.continuous_time, statedump.string_name))
+
+    proc_id = statedump.second_number_proc_id | (statedump.first_number_proc_id << 32)
+    proc_info = [c for c in self.catalog.process_entries if c.second_number_proc_id | (c.first_number_proc_id << 32) == proc_id]
+    if len(proc_info) == 0:
+      raise errors.ParseError("Could not find Process Info block for ID: %d", proc_id)
+    else:
+      proc_info = proc_info[0]
+
+    event_data = AULEventData()
+    try:
+      uuid_file = self.catalog.files[proc_info.main_uuid_index]
+      event_data.process_uuid = uuid_file.UUID
+      event_data.process = uuid_file.library_path
+    except IndexError:
+      pass
+    event_data.boot_uuid = self.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex
+    event_data.level = "StateDump"
+
+    if statedump.data_type == self._STATETYPE_PLIST:
+      try:
+        event_data.message = str(plistlib.loads(statedump.data))
+      except plistlib.InvalidFileException:
+        logger.warning("Statedump PList not valid")
+        return
+    elif statedump.data_type == self._STATETYPE_PROTOBUF:
+      raise errors.ParseError("Statedump Protobuf not supported")
+    elif statedump.data_type == self._STATETYPE_CUSTOM:
+      if statedump.string1 == "location":
+        if statedump.string_name == "CLDaemonStatusStateTracker":
+          pass
+          #get_daemon_status_tracker(object_data)
+        elif statedump.string_name == "CLClientManagerStateTracker":
+          # get_state_tracker_data(object_data),
+          pass
+        elif statedump.string_name == "CLLocationManagerStateTracker":
+          if statedump.data_size not in [64, 72]:
+            raise errors.ParseError("Possibly corrupted CLLocationManagerStateTracker block")
+          extra_state_tracker_structure = {}
+          state_tracker_structure = self._ReadStructureFromByteStream(
+            statedump.data, 0, self._GetDataTypeMap('location_tracker_state_data')).__dict__
+          if len(statedump.data) == 72:
+            extra_state_tracker_structure = self._ReadStructureFromByteStream(
+              statedump.data[64:], 64, self._GetDataTypeMap('location_tracker_state_data_extra')).__dict__
+          event_data.message = str({**state_tracker_structure, **extra_state_tracker_structure})
+        else:
+          raise errors.ParseError("Unknown location Statedump Custom object not supported")
+      else:
+        raise errors.ParseError("Non-location Statedump Custom object not supported")
+    else:
+      raise errors.ParseError("Unknown Statedump data type {0:d}".format(statedump.data_type))
+
+    event_data.activity_id = hex(statedump.activity_id)
+    event_data.pid = statedump.first_number_proc_id
+    logger.info("Log line: {0!s}".format(event_data.message))
+
+    ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, statedump.continuous_time)
+    time = ts.wall_time + statedump.continuous_time - ts.kernel_continuous_timestamp
+
+    event = time_events.DateTimeValuesEvent(dfdatetime_apfs_time.APFSTime(timestamp=time), plaso_definitions.TIME_DESCRIPTION_RECORDED)
+    parser_mediator.ProduceEventWithEventData(event, event_data)
+
+
+  def _ReadOversizeChunkData(self, parser_mediator, chunk_data, chunk_data_size, data_offset):
+    logger.info("Reading Oversize")
+    data_type_map = self._GetDataTypeMap('tracev3_oversize')
+
+    oversize = self._ReadStructureFromByteStream(
+        chunk_data, data_offset, data_type_map)
+    logger.info("Oversize data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}".format(oversize.first_number_proc_id, oversize.second_number_proc_id, oversize.ttl, oversize.continuous_time))
 
     offset = 0
     data_meta = self._ReadStructureFromByteStream(
-      oversize_header.data, offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
+      oversize.data, offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
-    logger.warning("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
-    (log_data, deferred_data_items, offset) = self._ReadItems(data_meta, oversize_header.data, offset)
+    logger.info("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
+    (oversize_strings, deferred_data_items, offset) = self._ReadItems(data_meta, oversize.data, offset)
 
     # Check for backtrace
-    if oversize_header.data[offset:offset+3] == [0x01, 0x00, 0x18]:
+    if oversize.data[offset:offset+3] == [0x01, 0x00, 0x18]:
       raise errors.ParseError("Backtrace !?")
 
-    oversize_strings = []
     for item in deferred_data_items:
       oversize_strings.append((item[0], item[2], self._ReadStructureFromByteStream(
-        oversize_header.data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))))
+        oversize.data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))))
     
-    oversize = OversizeData(oversize_header.first_number_proc_id, oversize_header.second_number_proc_id, oversize_header.data_ref_index)
+    oversize = OversizeData(oversize.first_number_proc_id, oversize.second_number_proc_id, oversize.data_ref_index)
     oversize.strings = oversize_strings
     self.oversize_data.append(oversize)
     logger.debug("Oversize Data: {0!s}".format(oversize_strings))
@@ -1319,18 +1502,18 @@ class TraceV3FileParser(interface.FileObjectParser,
     Raises:
       ParseError: if the firehose chunk cannot be read.
     """
-    logger.warning("Reading Firehose")
+    logger.info("Reading Firehose")
     data_type_map = self._GetDataTypeMap('tracev3_firehose_header')
 
     firehose_header = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
     
-    logger.warning("Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}".format(firehose_header.first_number_proc_id, firehose_header.second_number_proc_id, firehose_header.ttl, firehose_header.base_continuous_time))
+    logger.info("Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}".format(firehose_header.first_number_proc_id, firehose_header.second_number_proc_id, firehose_header.ttl, firehose_header.base_continuous_time))
 
     proc_id = firehose_header.second_number_proc_id | (firehose_header.first_number_proc_id << 32)
     proc_info = [c for c in self.catalog.process_entries if c.second_number_proc_id | (c.first_number_proc_id << 32) == proc_id]
     if len(proc_info) == 0:
-      logger.warning("Could not find Process Info block for ID: %d", proc_id)
+      errors.ParseError("Could not find Process Info block for ID: %d", proc_id)
     else:
       proc_info = proc_info[0]
 
@@ -1338,7 +1521,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       raise errors.ParseError(
         "Something to do with private strings - tracev3_file.py:794")
 
-    logger.warning("Firehose Header Timestamp: %s", self._TimestampFromContTime(
+    logger.info("Firehose Header Timestamp: %s", self._TimestampFromContTime(
           firehose_header.base_continuous_time))
 
     tracepoint_map = self._GetDataTypeMap('tracev3_firehose_tracepoint')
@@ -1346,7 +1529,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     while chunk_data_offset < chunk_data_size:
       firehose_tracepoint = self._ReadStructureFromByteStream(
           chunk_data[chunk_data_offset:], data_offset + chunk_data_offset, tracepoint_map)
-      logger.warning("Firehose Tracepoint data: ActivityType {0:d} // Flags {1:d} // ThreadID {2:d} // Datasize {3:d}".format(firehose_tracepoint.log_activity_type, firehose_tracepoint.flags, firehose_tracepoint.thread_identifier, firehose_tracepoint.data_size))
+      logger.info("Firehose Tracepoint data: ActivityType {0:d} // Flags {1:d} // ThreadID {2:d} // Datasize {3:d}".format(firehose_tracepoint.log_activity_type, firehose_tracepoint.flags, firehose_tracepoint.thread_identifier, firehose_tracepoint.data_size))
 
       ct = firehose_header.base_continuous_time + (firehose_tracepoint.continuous_time_lower | (firehose_tracepoint.continuous_time_upper << 32))
       ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
@@ -1380,16 +1563,16 @@ class TraceV3FileParser(interface.FileObjectParser,
       file_offset += 16
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_HEADER:
-        logger.warning("Processing a HEADER (0x1000)")
+        logger.info("Processing a HEADER (0x1000)")
         self._ReadHeader(file_object, file_offset)
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_CATALOG:
-        logger.warning("Processing a CATALOG (0x600B)")
+        logger.info("Processing a CATALOG (0x600B)")
         self.catalog = self._ReadCatalog(parser_mediator, file_object, file_offset)
         chunkset_index = 0
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_CHUNKSET:
-        logger.warning("Processing a CHUNKSET (0x600D)")
+        logger.info("Processing a CHUNKSET (0x600D)")
         self._ReadChunkSet(
           parser_mediator, file_object, file_offset, chunk_header, chunkset_index)
         chunkset_index += 1
