@@ -3,6 +3,7 @@
 
 import csv
 import datetime
+import decimal
 import os
 import re
 
@@ -662,6 +663,10 @@ class TraceV3FileParser(interface.FileObjectParser,
     uint64_data_type_map = self._GetDataTypeMap('uint64')
     float64_data_type_map = self._GetDataTypeMap('float64')
 
+    # Set up for floating point
+    ctx = decimal.Context()
+    ctx.prec = 20
+
     output = ""
     i = 0
     last_start_index = 0
@@ -680,7 +685,8 @@ class TraceV3FileParser(interface.FileObjectParser,
       data_item = data[i]
 
       custom_specifier = match.group(1)
-      if custom_specifier is not None and custom_specifier not in ['{time_t}', '{BOOL}', '{public}', '{private}']:
+      #TODO(fryy): Remove
+      if custom_specifier is not None and custom_specifier not in ['{time_t}', '{bool}', '{BOOL}', '{public}', '{private}']:
         logger.warning("Custom specifier not supported")
       flags_width_precision = match.group(2).replace('\'', '')
       length_modifier = match.group(3)
@@ -737,12 +743,12 @@ class TraceV3FileParser(interface.FileObjectParser,
           if ('%' + flags_width_precision + specifier) % number != format_code.format(number):
             raise errors.ParseError("FRY FIX")
           if custom_specifier == "{BOOL}":
-            if bool(format_code.format(number)):
+            if bool(number):
               output += "YES"
             else:
               output += "NO"
           elif custom_specifier == "{bool}":
-            output += str(bool(format_code.format(number))).lower()
+            output += str(bool(number)).lower()
           elif custom_specifier == "{time_t}":
             # Timestamp in seconds ?
             output += dfdatetime_posix_time.PosixTime(timestamp=number).CopyToDateTimeString()
@@ -767,11 +773,12 @@ class TraceV3FileParser(interface.FileObjectParser,
             format_code = '{:' + flags_width_precision + specifier + '}'
             output += format_code.format(number)
           else:
-            output += str(number)
+            # output += str(number)
+            output += format(ctx.create_decimal(repr(number)), 'f')
       elif specifier in ('c', 'C', 's', 'S', '@'):
         chars = ''
         if data_size == 0:
-          if data_type == 0x40:
+          if data_type in self._FIREHOSE_ITEM_STRING_TYPES:
             chars = '(null)'
           elif data_type & self._FIREHOSE_ITEM_STRING_PRIVATE:
             chars = '<private>'
@@ -800,7 +807,8 @@ class TraceV3FileParser(interface.FileObjectParser,
           number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
           if flags_width_precision:
             raise errors.ParseError("Fry look at this, how to fix")
-          output += hex(number)
+          #TODO(fryy): Revert
+          output += (hex(number))[2:].upper()
       else:
         raise errors.ParseError("UNKNOWN SPECIFIER")
 
@@ -1036,7 +1044,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
       data_offset += alignment
 
-  def _ParseNonActivity(self, parser_mediator, tracepoint, proc_info, time):
+  def _ParseNonActivity(self, parser_mediator, tracepoint, proc_info, time, private_strings):
     logger.info("Parsing non-activity")
     offset = 0
     flags = tracepoint.flags
@@ -1219,7 +1227,13 @@ class TraceV3FileParser(interface.FileObjectParser,
     log_data = []
 
     if flags & _PRIVATE_STRING_RANGE:
-      raise errors.ParseError("Private strings not supported")
+      if private_strings:
+        string_start = private_strings_offset - private_strings[0]
+        if string_start > len(private_strings[1] or string_start < 0):
+          raise errors.ParseError("Error with private string offset")
+        private_string = private_strings[1][string_start:string_start + private_strings_size]
+      else:
+        raise errors.ParseError("Private strings wanted but not supplied")
 
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
       raise errors.ParseError("Loss Type not supported")
@@ -1238,9 +1252,10 @@ class TraceV3FileParser(interface.FileObjectParser,
       backtrace_strings = ["Backtrace:\n"]
       backtrace_data = self._ReadStructureFromByteStream(
         data[offset:], offset, self._GetDataTypeMap('tracev3_backtrace'))
-      for idx in backtrace_data.indices:
+      for count, idx in enumerate(backtrace_data.indices):
         try:
-          backtrace_strings.append("{0:s} +0x{1:d}\n".format(backtrace_data.uuids[idx].hex.upper(), backtrace_data.offsets[idx]))
+          #TODO(Fryy): Revert
+          backtrace_strings.append("\"{0:s}\" +0x{1:d}\n".format(backtrace_data.uuids[idx].hex.upper(), backtrace_data.offsets[count]))
         except IndexError:
           pass
     elif len(data[offset:]) > 3:
@@ -1248,8 +1263,16 @@ class TraceV3FileParser(interface.FileObjectParser,
         raise errors.ParseError("Backtrace signature without context -- firehose_logs.rs:330")
 
     for item in deferred_data_items:
-      result = self._ReadStructureFromByteStream(
-        data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))
+      if item[2] == 0:
+        result = ""
+      elif item[0] in self._FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
+        if not private_string:
+          raise errors.ParseError("Trying to read from empty Private String")
+        result = self._ReadStructureFromByteStream(
+          private_string, 0, self._GetDataTypeMap('cstring'))
+      else:
+        result = self._ReadStructureFromByteStream(
+          data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))
       logger.info("End result: {0:s}".format(result))
       log_data.insert(item[3], (item[0], item[2], result))
 
@@ -1281,7 +1304,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         uuid_file = self._ExtractAltUUID(uuid_relative)
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
       else:
-        self._ExtractFormatStrings(tracepoint.format_string_location, uuid_file)
+        fmt = self._ExtractFormatStrings(tracepoint.format_string_location, uuid_file)
 
     found = False
     if data_ref_id != 0:
@@ -1358,13 +1381,13 @@ class TraceV3FileParser(interface.FileObjectParser,
         string_message = self._ReadStructureFromByteStream(
           data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item_string_type'))
         offset += data_item.item_size
-        if string_message.message_data_size == 0:
-          if data_item.item_type == 0x21 or data_item.item_type == 0x41:
-            log_data.append((data_item.item_type, data_item.item_size, "<private>"))
-          else:
-            log_data.append((data_item.item_type, data_item.item_size, "(null)"))
-        else:
-          deferred_data_items.append((data_item.item_type, string_message.offset, string_message.message_data_size, i))
+        #if string_message.message_data_size == 0:
+          #if data_item.item_type == 0x21 or data_item.item_type == 0x41:
+          #  deferred_data_items.append(("<private>", 0, string_message.message_data_size, i))
+          #else:
+          #  deferred_data_items.append(("(null)", 0, string_message.message_data_size, i))
+        #else:
+        deferred_data_items.append((data_item.item_type, string_message.offset, string_message.message_data_size, i))
         if data_item.item_type in self._FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
           raise errors.ParseError("Unsupported arbitrary type -- firehose_log.rs:790")
         if data_item.item_type == self._FIREHOSE_ITEM_STRING_BASE64_TYPE:
@@ -1379,7 +1402,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         raise errors.ParseError("Unsupported special case?? tracev3_file.py:479")
     return (log_data, deferred_data_items, offset)
 
-  def _ParseTracepointData(self, parser_mediator, tracepoint, proc_info, time):
+  def _ParseTracepointData(self, parser_mediator, tracepoint, proc_info, time, private_strings):
     """Parses a log line"""
 
     logger.info("Parsing log line")
@@ -1387,7 +1410,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY:
       if log_type == 0x80:
         raise errors.ParseError("Non Activity Signpost ??")
-      self._ParseNonActivity(parser_mediator, tracepoint, proc_info, time)
+      self._ParseNonActivity(parser_mediator, tracepoint, proc_info, time, private_strings)
     else:
       raise errors.ParseError("Unsupported log activity type: {}".format(tracepoint.log_activity_type))
     return
@@ -1399,6 +1422,18 @@ class TraceV3FileParser(interface.FileObjectParser,
     statedump = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
     logger.info("Statedump data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d} // String Name {4:s}".format(statedump.first_number_proc_id, statedump.second_number_proc_id, statedump.ttl, statedump.continuous_time, statedump.string_name))
+
+    try:
+      statedump.string1 = self._ReadStructureFromByteStream(
+        statedump.string1, 0, self._GetDataTypeMap('cstring'))
+    except errors.ParseError:
+      statedump.string1 = ''
+
+    try:
+      statedump.string2 = self._ReadStructureFromByteStream(
+        statedump.string2, 0, self._GetDataTypeMap('cstring'))
+    except errors.ParseError:
+      statedump.string2 = ''
 
     proc_id = statedump.second_number_proc_id | (statedump.first_number_proc_id << 32)
     proc_info = [c for c in self.catalog.process_entries if c.second_number_proc_id | (c.first_number_proc_id << 32) == proc_id]
@@ -1427,24 +1462,37 @@ class TraceV3FileParser(interface.FileObjectParser,
       raise errors.ParseError("Statedump Protobuf not supported")
     elif statedump.data_type == self._STATETYPE_CUSTOM:
       if statedump.string1 == "location":
+        state_tracker_structure = {}
+        extra_state_tracker_structure = {}
+
         if statedump.string_name == "CLDaemonStatusStateTracker":
-          pass
-          #get_daemon_status_tracker(object_data)
+          state_tracker_structure = self._ReadStructureFromByteStream(
+            statedump.data, 0, self._GetDataTypeMap('location_tracker_daemon_data')).__dict__
+
+          if state_tracker_structure['reachability'] == 0x2:
+            state_tracker_structure['reachability'] = "kReachabilityLarge"
+          else:
+            state_tracker_structure['reachability'] = "Unknown"
+
+          if state_tracker_structure['charger_type'] == 0x0:
+            state_tracker_structure['charger_type'] = "kChargerTypeUnknown"
+          else:
+            state_tracker_structure['charger_type'] = "Unknown"
         elif statedump.string_name == "CLClientManagerStateTracker":
-          # get_state_tracker_data(object_data),
-          pass
+          state_tracker_structure = self._ReadStructureFromByteStream(
+            statedump.data, 0, self._GetDataTypeMap('location_tracker_client_data')).__dict__
         elif statedump.string_name == "CLLocationManagerStateTracker":
           if statedump.data_size not in [64, 72]:
             raise errors.ParseError("Possibly corrupted CLLocationManagerStateTracker block")
-          extra_state_tracker_structure = {}
           state_tracker_structure = self._ReadStructureFromByteStream(
-            statedump.data, 0, self._GetDataTypeMap('location_tracker_state_data')).__dict__
+            statedump.data, 0, self._GetDataTypeMap('location_manager_state_data')).__dict__
           if len(statedump.data) == 72:
             extra_state_tracker_structure = self._ReadStructureFromByteStream(
-              statedump.data[64:], 64, self._GetDataTypeMap('location_tracker_state_data_extra')).__dict__
-          event_data.message = str({**state_tracker_structure, **extra_state_tracker_structure})
+              statedump.data[64:], 64, self._GetDataTypeMap('location_manager_state_data_extra')).__dict__
         else:
           raise errors.ParseError("Unknown location Statedump Custom object not supported")
+
+        event_data.message = str({**state_tracker_structure, **extra_state_tracker_structure})
       else:
         raise errors.ParseError("Non-location Statedump Custom object not supported")
     else:
@@ -1457,6 +1505,8 @@ class TraceV3FileParser(interface.FileObjectParser,
     ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, statedump.continuous_time)
     time = ts.wall_time + statedump.continuous_time - ts.kernel_continuous_timestamp
 
+    with open('/tmp/fryoutput.csv', 'a') as f:
+      csv.writer(f).writerow([time, event_data.message])
     event = time_events.DateTimeValuesEvent(dfdatetime_apfs_time.APFSTime(timestamp=time), plaso_definitions.TIME_DESCRIPTION_RECORDED)
     parser_mediator.ProduceEventWithEventData(event, event_data)
 
@@ -1467,7 +1517,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     oversize = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
-    logger.info("Oversize data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}".format(oversize.first_number_proc_id, oversize.second_number_proc_id, oversize.ttl, oversize.continuous_time))
+    logger.info("Oversize data: ProcID 1 {0:d} // ProcID 2 {1:d} // Ref Index {2:d} // CT {3:d}".format(oversize.first_number_proc_id, oversize.second_number_proc_id, oversize.data_ref_index, oversize.continuous_time))
 
     offset = 0
     data_meta = self._ReadStructureFromByteStream(
@@ -1482,6 +1532,9 @@ class TraceV3FileParser(interface.FileObjectParser,
       raise errors.ParseError("Backtrace !?")
 
     for item in deferred_data_items:
+      if item[2] == 0:
+        oversize_strings.append((item[0], item[2], ""))
+        continue
       oversize_strings.append((item[0], item[2], self._ReadStructureFromByteStream(
         oversize.data[offset + item[1]:], 0, self._GetDataTypeMap('cstring'))))
     
@@ -1517,16 +1570,18 @@ class TraceV3FileParser(interface.FileObjectParser,
     else:
       proc_info = proc_info[0]
 
-    if firehose_header.private_data_virtual_offset < 4096:
-      raise errors.ParseError(
-        "Something to do with private strings - tracev3_file.py:794")
+    private_strings = None
+    private_data_len = 0
+    if firehose_header.private_data_virtual_offset != 4096:
+      private_data_len = 4096 - firehose_header.private_data_virtual_offset
+      private_strings = (firehose_header.private_data_virtual_offset, chunk_data[-private_data_len:])
 
     logger.info("Firehose Header Timestamp: %s", self._TimestampFromContTime(
           firehose_header.base_continuous_time))
 
     tracepoint_map = self._GetDataTypeMap('tracev3_firehose_tracepoint')
     chunk_data_offset = 32
-    while chunk_data_offset < chunk_data_size:
+    while chunk_data_offset < chunk_data_size-private_data_len:
       firehose_tracepoint = self._ReadStructureFromByteStream(
           chunk_data[chunk_data_offset:], data_offset + chunk_data_offset, tracepoint_map)
       logger.info("Firehose Tracepoint data: ActivityType {0:d} // Flags {1:d} // ThreadID {2:d} // Datasize {3:d}".format(firehose_tracepoint.log_activity_type, firehose_tracepoint.flags, firehose_tracepoint.thread_identifier, firehose_tracepoint.data_size))
@@ -1534,7 +1589,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       ct = firehose_header.base_continuous_time + (firehose_tracepoint.continuous_time_lower | (firehose_tracepoint.continuous_time_upper << 32))
       ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
       time = ts.wall_time + ct - ts.kernel_continuous_timestamp
-      self._ParseTracepointData(parser_mediator, firehose_tracepoint, proc_info, time)
+      self._ParseTracepointData(parser_mediator, firehose_tracepoint, proc_info, time, private_strings)
 
       chunk_data_offset += 24 + firehose_tracepoint.data_size
       _, alignment = divmod(chunk_data_offset, 8)
