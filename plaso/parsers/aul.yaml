@@ -56,6 +56,13 @@ attributes:
   size: 4
   units: bytes
 ---
+name: uint32be
+type: integer
+attributes:
+  byte_order: big-endian
+  size: 4
+  units: bytes
+---
 name: int32
 type: integer
 attributes:
@@ -328,10 +335,14 @@ members:
 - name: catalog_uuid_index
 # UnifiedLogReader: uuid_file_index
   data_type: uint16
-- name: load_address
-  type: stream
-  element_data_type: byte
-  number_of_elements: 6
+#- name: load_address
+#  type: stream
+#  element_data_type: byte
+#  number_of_elements: 6
+- name: absolute_offset
+  data_type: uint32
+- name: absolute_ref
+  data_type: uint16
 # UnifiedLogReader: ref_v_offset 4 bytes
 #                   ref_id       2 bytes
 # Mandiant:
@@ -909,3 +920,64 @@ members:
   data_type: bool32
 - name: location_restricted
   data_type: bool32
+---
+name: mbr_group_type
+type: structure
+description: Open Directory Master Boot Record group/alias structure
+attributes:
+  byte_order: little-endian
+members:
+- name: name
+  data_type: cstring
+- name: domain
+  data_type: cstring
+---
+name: nt_sid
+type: structure
+description: Windows Security Identifier
+attributes:
+  byte_order: little-endian
+members:
+- name: rev
+  data_type: uint8
+- name: num_sub_auth
+  data_type: uint8
+- name: unknown1
+  data_type: uint16
+- name: authority
+  data_type: uint32be
+- name: sub_authorities
+  type: sequence
+  element_data_type: uint32
+  number_of_elements: nt_sid.num_sub_auth
+---
+name: sockaddr
+type: structure
+description: Network socket address
+attributes:
+  byte_order: little-endian
+members:
+- name: size
+  data_type: uint8
+- name: family
+  data_type: uint8
+- name: ipv4_port
+  data_type: uint16
+  condition: sockaddr.family == 0x02
+- name: ipv4_address
+  type: sequence
+  element_data_type: uint8
+  number_of_elements: 4
+  condition: sockaddr.family == 0x02
+- name: ipv6_port
+  data_type: uint16
+  condition: sockaddr.family == 0x1E
+- name: ipv6_flowinfo
+  data_type: uint32
+  condition: sockaddr.family == 0x1E
+- name: ipv6_ip
+  type: sequence
+  element_data_type: uint16
+  number_of_elements: 8
+  condition: sockaddr.family == 0x1E
+  
