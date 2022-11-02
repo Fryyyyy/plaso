@@ -2,7 +2,7 @@
 """SQLite Result Codes helper.
 
 For a list of result codes see:
-  https://www.sqlite.org/c3ref/c_abort.html
+  https://www.sqlite.org/rescode.html
 """
 
 
@@ -40,7 +40,8 @@ class SQLiteResultCodeHelper(object):
     27: 'SQLITE_NOTICE',
     28: 'SQLITE_WARNING',
     100: 'SQLITE_ROW',
-    101: 'SQLITE_DONE'}
+    101: 'SQLITE_DONE',
+    266: 'SQLITE IO ERR READ'}
 
   @classmethod
   def GetResult(cls, code):

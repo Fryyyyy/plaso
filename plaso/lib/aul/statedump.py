@@ -21,7 +21,7 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
   _DEFINITION_FILE = os.path.join(
       os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
 
-  def _ReadStatedumpChunkData(self, tracev3, parser_mediator, chunk_data,
+  def ReadStatedumpChunkData(self, tracev3, parser_mediator, chunk_data,
                               data_offset):
     logger.info("Reading Statedump")
     data_type_map = self._GetDataTypeMap('tracev3_statedump')
@@ -134,13 +134,13 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
     event_data.pid = statedump_structure.first_number_proc_id
     logger.info("Log line: {0!s}".format(event_data.message))
 
-    ts = aul.TraceV3FileParser._FindClosestTimesyncItemInList(
+    ts = tracev3._FindClosestTimesyncItemInList(
         tracev3.boot_uuid_ts_list, statedump_structure.continuous_time)
     time = ts.wall_time + statedump_structure.continuous_time - ts.kernel_continuous_timestamp
 
     with open('/tmp/fryoutput.csv', 'a') as f:
       csv.writer(f).writerow([
-          aul.TraceV3FileParser._TimestampFromContTime(time), event_data.level,
+          tracev3._TimestampFromContTime(time), event_data.level,
           event_data.message
       ])
     event = time_events.DateTimeValuesEvent(

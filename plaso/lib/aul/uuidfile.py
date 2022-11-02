@@ -24,7 +24,7 @@ class UUIDText(dtfabric_helper.DtFabricHelper):
     uuid (uuid.UUID): the UUID.
   """
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'uuidfile.yaml')
 
   def __init__(self, library_path, library_name, uuid, data, entries):
     super(UUIDText, self).__init__()
@@ -70,7 +70,7 @@ class UUIDFileParser(
   """
 
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'uuidfile.yaml')
 
   def __init__(self, file_entry, file_system):
     """Initialises the parser."""

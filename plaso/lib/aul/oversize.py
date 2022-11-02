@@ -2,7 +2,6 @@
 """The Apple Unified Logging (AUL) Oversize chunk parser."""
 import os
 
-from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 
 from plaso.parsers import aul
@@ -25,15 +24,14 @@ class OversizeData():
     self.second_proc_id = second_proc_id
     self.strings = []
 
-class OversizeParser(dtfabric_helper.DtFabricHelper):
+class OversizeParser():
   """Oversized data chunk parser"""
-  _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
 
-  def ReadOversizeChunkData(self, chunk_data, data_offset):
+  def ReadOversizeChunkData(self, tracev3_parser, chunk_data, data_offset):
     """Processes the Oversized data chunk.
 
     Args:
+      tracev3_parser (TraceV3FileParser): TraceV3 File Parser.
       chunk_data (bytes): oversize chunk data.
       data_offset (int): offset of the oversize chunk relative to the start
         of the chunk set.
@@ -42,9 +40,9 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
       ParseError: if the oversize chunk cannot be read.
     """
     logger.info("Reading Oversize")
-    data_type_map = self._GetDataTypeMap('tracev3_oversize')
+    data_type_map = tracev3_parser._GetDataTypeMap('tracev3_oversize')
 
-    oversize = self._ReadStructureFromByteStream(
+    oversize = tracev3_parser._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
     logger.info(
       'Oversize data: ProcID 1 {0:d} // ProcID 2 {1:d} // '
@@ -53,17 +51,17 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
               oversize.data_ref_index, oversize.continuous_time))
 
     offset = 0
-    data_meta = self._ReadStructureFromByteStream(
+    data_meta = tracev3_parser._ReadStructureFromByteStream(
       oversize.data,
       offset,
-      self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
+      tracev3_parser._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
     logger.info(
       "After activity data: Unknown {0:d} // Number of Items {1:d}".format(
         data_meta.unknown1, data_meta.num_items))
     (oversize_strings, deferred_data_items,
-      offset) = aul.TraceV3FileParser.ReadItems(
+      offset) = tracev3_parser.ReadItems(
         data_meta, oversize.data, offset)
 
     # Check for backtrace
@@ -82,16 +80,17 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
         continue
       oversize_strings.append(
           (item[0], item[2],
-           self._ReadStructureFromByteStream(oversize.data[offset + item[1]:],
-                                             0,
-                                             self._GetDataTypeMap('cstring'))))
+           tracev3_parser._ReadStructureFromByteStream(
+            oversize.data[offset + item[1]:],
+            0,
+            tracev3_parser._GetDataTypeMap('cstring'))))
       rolling_offset += item[2]
     offset = rolling_offset
     for item, index in private_items:
       oversize_strings[index] = (item[0], item[2],
-                                 self._ReadStructureFromByteStream(
+                                 tracev3_parser._ReadStructureFromByteStream(
                                      oversize.data[offset + item[1]:], 0,
-                                     self._GetDataTypeMap('cstring')))
+                                     tracev3_parser._GetDataTypeMap('cstring')))
 
     oversize = OversizeData(
       oversize.first_number_proc_id,
@@ -100,4 +99,3 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
     oversize.strings = oversize_strings
     logger.debug("Oversize Data: {0!s}".format(oversize_strings))
     return oversize
-   

@@ -18,10 +18,10 @@ class TimesyncParser(
   """Timesync record file parser
 
   Attributes:
-    records (list[timesync_boot_record]): List of Timesync records.
+    records (List[timesync_boot_record]): List of Timesync records.
   """
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'timesync.yaml')
 
   def __init__(self):
     """Initialises the parser."""

@@ -55,15 +55,24 @@ class DSCUUID(object):
 
 
 class DSCFile(object):
-  def __init__(self, uuid):
+  """Shared-Cache Strings (dsc) File.
+
+  Attributes:
+    ranges (List[DSCRange]): the ranges.
+    uuids (list[DSCUUID]): the UUIDs.
+    uuid: The particular UUID of the DSC file.
+  """
+  def __init__(self):
+    """Initializes a Shared-Cache Strings (dsc) File."""
     super(DSCFile, self).__init__()
     self.ranges = []
     self.uuids = []
-    self.uuid = uuid
+    self.uuid = None
 
   def ReadFormatString(self, offset):
+    """Finds the range in the list of ranges at the given offset."""
     for r in self.ranges:
-      if offset >= r.range_offset and offset < (r.range_offset + r.range_size):
+      if r.range_offset <= offset < (r.range_offset + r.range_size):
         return r
 
 class DSCFileParser(
@@ -76,7 +85,7 @@ class DSCFileParser(
   """
 
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'dsc.yaml')
 
   def __init__(self, file_entry, file_system):
     """Initializes a dsc file.
@@ -85,25 +94,39 @@ class DSCFileParser(
     self.file_entry = file_entry
     self.file_system = file_system
     path_segments = file_system.SplitPath(file_entry.path_spec.location)
-    self.dsc_location = file_system.JoinPath(path_segments[:-3] + ['uuidtext', 'dsc'])
+    self.dsc_location = file_system.JoinPath(
+      path_segments[:-3] + ['uuidtext', 'dsc'])
     if not os.path.exists(self.dsc_location):
       raise errors.ParseError(
         "Invalid UUIDText location: {0:s}".format(self.dsc_location))
 
   def FindFile(self, parser_mediator, uuid):
+    """Finds the DSC file on the file system
+       corresponding to the given UUID.
+
+    Args:
+      parser_mediator (ParserMediator): a parser mediator.
+      uuid (str): The desired UUID.
+
+    Returns:
+      DSCFile if found, else None.
+    """
     kwargs = {}
     kwargs['location'] = self.file_system.JoinPath([self.dsc_location] + [uuid])
     dsc_file_path_spec = path_spec_factory.Factory.NewPathSpec(
         self.file_entry.path_spec.TYPE_INDICATOR, **kwargs)
 
-    dsc_file_entry = path_spec_resolver.Resolver.OpenFileEntry(dsc_file_path_spec)
+    dsc_file_entry = path_spec_resolver.Resolver.OpenFileEntry(
+      dsc_file_path_spec)
 
     if not dsc_file_entry:
       return None
 
     dsc_file_object = dsc_file_entry.GetFileObject()
     try:
-      return self.ParseFileObject(parser_mediator, dsc_file_object, uuid)
+      ret = self.ParseFileObject(parser_mediator, dsc_file_object)
+      ret.uuid = uuid
+      return ret
     except (IOError, errors.ParseError) as exception:
       message = (
           'Unable to parse DSC file: {0:s} with error: '
@@ -245,7 +268,7 @@ class DSCFileParser(
 
     return uuid_path
 
-  def ParseFileObject(self, parser_mediator, file_object, uuid):
+  def ParseFileObject(self, parser_mediator, file_object):
     """Parses a shared-cache strings (dsc) file-like object.
 
     Args:
@@ -255,7 +278,7 @@ class DSCFileParser(
     Raises:
       WrongParser: when the file cannot be parsed.
     """
-    ret = DSCFile(uuid)
+    ret = DSCFile()
     file_header = self._ReadFileHeader(file_object)
 
     file_offset = file_object.tell()
@@ -276,7 +299,7 @@ class DSCFileParser(
 
       dsc_range.path = dsc_uuid.path
       dsc_range.uuid = dsc_uuid.sender_identifier
-    
+
     #TODO(fryy) : Can we do this?
     del ret.uuids
 

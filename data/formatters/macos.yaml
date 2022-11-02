@@ -105,6 +105,7 @@ message:
 - 'PID: {pid}'
 - 'EUID: {euid}'
 - 'Boot UUID: {boot_uuid}'
+- 'TTL: {ttl}'
 - 'Process: {process}'
 - 'Process UUID: {process_uuid}'
 - 'Library: {library}'
