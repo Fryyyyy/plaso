@@ -17,6 +17,8 @@ from dfdatetime import posix_time as dfdatetime_posix_time
 from plaso.containers import events
 from plaso.containers import time_events
 
+from plaso.helpers.mac import dns
+from plaso.helpers.mac import location
 from plaso.helpers.mac import opendirectory
 from plaso.helpers import sqlite
 
@@ -191,8 +193,8 @@ class TraceV3FileParser(interface.FileObjectParser,
     #  in6_addr        %{network:in6_addr}.16P  fe80::f:86ff:fee9:5c16
 
       #TODO(fryy): Remove
-      if custom_specifier and 'signpost' not in custom_specifier and custom_specifier not in [
-        '{odtypes:ODError}', '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}', '{public, location:SqliteResult}', '{public,network:sockaddr}', '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}', '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}', '{public}', '{private}']:
+      if custom_specifier and 'signpost' not in custom_specifier and 'name' not in custom_specifier and custom_specifier not in [
+        '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}', '{private, mask.hash}', '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}', '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}', '{public, location:SqliteResult}', '{public,network:sockaddr}', '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}', '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}', '{public,BOOL}', '{public}', '{private}']:
         logger.warning("Custom specifier not supported: {}".format(custom_specifier))
       flags_width_precision = match.group(2).replace('\'', '')
       length_modifier = match.group(3)
@@ -200,6 +202,13 @@ class TraceV3FileParser(interface.FileObjectParser,
       data_type = data_item[0]
       data_size = data_item[1]
       raw_data  = data_item[2]
+
+      # Weird hack for "%{public}" which isn't a legal format string
+      if flags_width_precision == ' ':
+        last_start_index -= 2
+
+      if 'mask.hash' in custom_specifier and data_type == 0xF2:
+        pass # decoder.rs:50
 
       if (data_type in self.FIREHOSE_ITEM_PRIVATE_STRING_TYPES) and len(raw_data) == 0 and (data_size == 0 or (data_type == self.FIREHOSE_ITEM_STRING_PRIVATE and data_size == 0x8000)):
         output += "<private>"
@@ -216,7 +225,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         number = 0
         if data_size == 0 and data_type != self.FIREHOSE_ITEM_STRING_PRIVATE:
           raise errors.ParseError("Size 0 in int fmt {0:s} // data {1!s}".format(format_string, data_item))
-        elif data_type == self.FIREHOSE_ITEM_STRING_PRIVATE:
+        elif data_type == self.FIREHOSE_ITEM_STRING_PRIVATE and not raw_data:
           output += "0" # A private number
         else:
           if specifier in ('d', 'D', 'i'):
@@ -240,13 +249,13 @@ class TraceV3FileParser(interface.FileObjectParser,
               raise errors.ParseError("Unknown data_size for unsigned int: {0:d} // fmt {1:s}".format(data_size, format_string))
             if specifier in ('u', 'U'):
               specifier = 'd'
-            if specifier == 'O':
+            elif specifier == 'O':
               specifier = 'o'
           width_and_precision = flags_width_precision.split(".")
           if len(width_and_precision) == 2:
             flags_width_precision = "0" + width_and_precision[0]
           if flags_width_precision.startswith("-"):
-            flags_width_precision = flags_width_precision[1:]
+            flags_width_precision = '<' + flags_width_precision[1:]
           if flags_width_precision == ".":
             flags_width_precision = ".0"
           format_code = '{:' + flags_width_precision + specifier + '}'
@@ -257,27 +266,29 @@ class TraceV3FileParser(interface.FileObjectParser,
               raise errors.ParseError("FRY FIX")
           except ValueError:
             pass
-          if custom_specifier == "{BOOL}":
+          if "BOOL" in custom_specifier:
             if bool(number):
               output += "YES"
             else:
               output += "NO"
-          elif custom_specifier == "{bool}":
+          elif "bool" in custom_specifier:
             output += str(bool(number)).lower()
-          elif custom_specifier == "{time_t}":
+          elif "time_t" in custom_specifier:
             # Timestamp in seconds ?
             output += dfdatetime_posix_time.PosixTime(timestamp=number).CopyToDateTimeString()
           elif "odtypes:ODError" in custom_specifier:
             output += opendirectory.ODErrorsHelper.GetError(number)
           elif "odtypes:mbridtype" in custom_specifier:
             output += opendirectory.ODMBRIdHelper.GetType(number)
+          elif 'location:CLClientAuthorizationStatus' in custom_specifier:
+            output += location.ClientAuthStatusHelper.GetCode(number)
           else:
             output += format_code.format(number)
       elif specifier in ('f', 'e', 'E', 'g', 'G', 'a', 'A', 'F'):
         number = 0
         if data_size == 0 and data_type != self.FIREHOSE_ITEM_STRING_PRIVATE:
           raise errors.ParseError("Size 0 in float fmt {0:s} // data {1!s}".format(format_string, data_item))
-        elif data_type == self.FIREHOSE_ITEM_STRING_PRIVATE:
+        elif data_type == self.FIREHOSE_ITEM_STRING_PRIVATE and not raw_data:
           output += '0' # A private number
         else:
           if data_size == 4:
@@ -310,6 +321,8 @@ class TraceV3FileParser(interface.FileObjectParser,
             chars = '<private>'
         else:
           chars = raw_data
+          if isinstance(chars, bytes):
+            chars = chars.decode('utf-8').rstrip('\x00')
           if "*" in flags_width_precision:
             flags_width_precision = ''
           old = ('%' + flags_width_precision + specifier) % chars
@@ -320,6 +333,8 @@ class TraceV3FileParser(interface.FileObjectParser,
             if old != format_code.format(chars):
               raise errors.ParseError("FRY FIX")
           except ValueError:
+            pass
+          except TypeError:
             pass
           chars = format_code.format(chars)
         output += chars
@@ -357,21 +372,34 @@ class TraceV3FileParser(interface.FileObjectParser,
             if raw_data[8:24] == b'\x00'*16:
               chars = "IN6ADDR_ANY"
             else:
-              chars = ipaddress.ip_address(':'.join(['{:X}'.format(segment) for segment in sockaddr.ipv6_ip])).compressed
+              chars = ipaddress.ip_address(self._FormatPackedIPv6Address(sockaddr.ipv6_ip.segments)).compressed
           # IPv4
           elif sockaddr.family == 0x02:
-            chars = ".".join(
-              [str(segment) for segment in sockaddr.ipv4_address])
+            chars = self._FormatPackedIPv4Address(sockaddr.ipv4_address.segments)
             if sockaddr.ipv4_port:
               chars += ":{0:d}".format(sockaddr.ipv4_port)
           else:
             raise errors.ParseError('Unknown Sockaddr Family')
+        elif 'network:in_addr' in custom_specifier:
+          ip_addr = self._ReadStructureFromByteStream(raw_data, 0, self._GetDataTypeMap('ipv4_address'))
+          chars = self._FormatPackedIPv4Address(ip_addr.segments)
+        elif 'network:in6_addr' in custom_specifier:
+          ip_addr = self._ReadStructureFromByteStream(raw_data, 0, self._GetDataTypeMap('ipv6_address'))
+          chars = ipaddress.ip_address(self._FormatPackedIPv4Address(ip_addr.segments)).compressed
         elif "location:SqliteResult" in custom_specifier:
           code = sqlite.SQLiteResultCodeHelper.GetResult(self._ReadStructureFromByteStream(raw_data, 0, uint32_data_type_map))
           if code:
             chars += '"{0:s}"'.format(code)
           else:
             raise errors.ParseError("Unknown SQLite Code")
+        elif 'mdnsresponder:domain_name' in custom_specifier:
+          chars = ''.join(['.' if not chr(s).isprintable() else chr(s) for s in raw_data.replace(b'\n', b'').replace(b'\t', b'').replace(b'\r', b'')])
+        elif 'mdns:dnshdr' in custom_specifier:
+          # ID = 28454
+          # Recursion desired
+          dnsheader = self._ReadStructureFromByteStream(raw_data, 0, self._GetDataTypeMap('dns_header'))
+          flag_string = dns.DNSFlags.ParseFlags(dnsheader.flags)
+          chars = "id: {0:s} ({1:d}), flags: 0x{2:04x} ({3:s}), counts: {4:d}/{5:d}/{6:d}/{7:d}".format(hex(dnsheader.id), dnsheader.id, dnsheader.flags, flag_string, dnsheader.questions, dnsheader.answers, dnsheader.authority_records, dnsheader.additional_records)
         else:
           raise errors.ParseError("Unknown data specifier: {}".format(custom_specifier))
         output += chars
@@ -388,7 +416,10 @@ class TraceV3FileParser(interface.FileObjectParser,
             data_map = uint64_data_type_map
           else:
             raise errors.ParseError("Unknown data_size for pointer: {0:d} // fmt {1:s}".format(data_size, format_string))
-          number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
+          try:
+            number = self._ReadStructureFromByteStream(raw_data, 0, data_map)
+          except ValueError:
+            pass
           if flags_width_precision:
             raise errors.ParseError("Fry look at this, how to fix")
           #TODO(fryy): Revert
@@ -1036,6 +1067,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       offset += 2
       logger.info("Non-activity has subsystem: {0:d}".format(subsystem_value))
 
+
     if flags & self.HAS_TTL:
       ttl_value = self._ReadStructureFromByteStream(
         data[offset:], offset, uint8_data_type_map)
@@ -1080,6 +1112,9 @@ class TraceV3FileParser(interface.FileObjectParser,
       data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
+    if len(data[offset:]) < 6:
+      return
+
     logger.info("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
     (log_data, deferred_data_items, offset) = self.ReadItems(data_meta, data, offset)
 
@@ -1106,10 +1141,13 @@ class TraceV3FileParser(interface.FileObjectParser,
       elif item[0] in self.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
         if not private_string:
           raise errors.ParseError("Trying to read from empty Private String")
-        result = self._ReadStructureFromByteStream(
-          private_string[item[1]:], 0, self._GetDataTypeMap('cstring'))
+        if item[0] in self.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
+          result = private_string[item[1]:item[1] + item[2]]
+        else:
+          result = self._ReadStructureFromByteStream(
+            private_string[item[1]:], 0, self._GetDataTypeMap('cstring'))
       elif item[0] == self.FIREHOSE_ITEM_STRING_PRIVATE:
-        result = ''
+        result = private_string[item[1]:item[1] + item[2]]
       else:
         if item[0] in self.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
           result = data[offset + item[1]:offset + item[1] + item[2]]
@@ -1121,7 +1159,6 @@ class TraceV3FileParser(interface.FileObjectParser,
           raise errors.ParseError("Unsupported base64 type -- firehose_log.rs:797")
       log_data.insert(item[3], (item[0], item[2], result))
 
-
     if tracepoint.log_activity_type == self._FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
       raise errors.ParseError("Loss Type not supported")
 
@@ -1129,14 +1166,14 @@ class TraceV3FileParser(interface.FileObjectParser,
     extra_offset_value_result = tracepoint.format_string_location
     if formatter_flags.shared_cache or formatter_flags.large_shared_cache != 0:
       if formatter_flags.large_offset_data != 0:
-        if large_offset_data != formatter_flags.large_shared_cache / 2 and not formatter_flags.shared_cache:
-          large_offset_data = formatter_flags.large_shared_cache / 2
-          extra_offset_value = "{0:X}{1:08x}".format(large_offset_data, tracepoint.format_string_location)
+        if formatter_flags.large_offset_data != formatter_flags.large_shared_cache / 2 and not formatter_flags.shared_cache:
+          formatter_flags.large_offset_data = formatter_flags.large_shared_cache / 2
+          extra_offset_value = "{0:X}{1:08x}".format(formatter_flags.large_offset_data, tracepoint.format_string_location)
         elif formatter_flags.shared_cache:
-          large_offset_data = 8
-          extra_offset_value = "{0:X}{1:07x}".format(large_offset_data, tracepoint.format_string_location)
+          formatter_flags.large_offset_data = 8
+          extra_offset_value = "{0:X}{1:07x}".format(formatter_flags.large_offset_data, tracepoint.format_string_location)
         else:
-          extra_offset_value = "{0:X}{1:08x}".format(large_offset_data, tracepoint.format_string_location)
+          extra_offset_value = "{0:X}{1:08x}".format(formatter_flags.large_offset_data, tracepoint.format_string_location)
         extra_offset_value_result = int(extra_offset_value, 16)
       (fmt, dsc_range) = self._ExtractSharedStrings(tracepoint.format_string_location, extra_offset_value_result, dsc_file)
     else:
@@ -1307,7 +1344,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     tracepoint_map = self._GetDataTypeMap('tracev3_firehose_tracepoint')
     chunk_data_offset = 32
     #while chunk_data_offset < chunk_data_size-private_data_len:
-    while chunk_data_offset < firehose_header.public_data_size-16:
+    while chunk_data_offset <= firehose_header.public_data_size-16:
       firehose_tracepoint = self._ReadStructureFromByteStream(
           chunk_data[chunk_data_offset:], data_offset + chunk_data_offset, tracepoint_map)
       logger.info("Firehose Tracepoint data: ActivityType {0:d} // Flags {1:d} // ThreadID {2:d} // Datasize {3:d}".format(firehose_tracepoint.log_activity_type, firehose_tracepoint.flags, firehose_tracepoint.thread_identifier, firehose_tracepoint.data_size))

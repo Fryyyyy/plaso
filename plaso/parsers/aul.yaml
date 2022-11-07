@@ -41,6 +41,14 @@ attributes:
   size: 2
   units: bytes
 ---
+name: uint16be
+type: integer
+attributes:
+  byte_order: big-endian
+  format: unsigned
+  size: 2
+  units: bytes
+---
 name: bool32
 type: boolean
 attributes:
@@ -60,6 +68,7 @@ name: uint32be
 type: integer
 attributes:
   byte_order: big-endian
+  format: unsigned
   size: 4
   units: bytes
 ---
@@ -779,6 +788,28 @@ members:
   element_data_type: uint32
   number_of_elements: nt_sid.num_sub_auth
 ---
+name: ipv4_address
+type: structure
+description: 4 ints representing octets
+attributes:
+  byte_order: little-endian
+members:
+- name: segments
+  type: sequence
+  element_data_type: uint8
+  number_of_elements: 4
+---
+name: ipv6_address
+type: structure
+description: 8 ints representing octets
+attributes:
+  byte_order: little-endian
+members:
+- name: segments
+  type: sequence
+  element_data_type: uint16
+  number_of_elements: 8
+---
 name: sockaddr
 type: structure
 description: Network socket address
@@ -793,9 +824,7 @@ members:
   data_type: uint16
   condition: sockaddr.family == 0x02
 - name: ipv4_address
-  type: sequence
-  element_data_type: uint8
-  number_of_elements: 4
+  data_type: ipv4_address
   condition: sockaddr.family == 0x02
 - name: ipv6_port
   data_type: uint16
@@ -804,9 +833,26 @@ members:
   data_type: uint32
   condition: sockaddr.family == 0x1E
 - name: ipv6_ip
-  type: sequence
-  element_data_type: uint16
-  number_of_elements: 8
+  data_type: ipv6_address
   condition: sockaddr.family == 0x1E
 - name: ipv6_scope
   data_type: uint32
+---
+name: dns_header
+type: structure
+description: DNS Header Data
+attributes:
+  byte_order: little-endian
+members:
+- name: id
+  data_type: uint16be
+- name: flags
+  data_type: uint16be
+- name: questions
+  data_type: uint16be
+- name: answers
+  data_type: uint16be
+- name: authority_records
+  data_type: uint16be
+- name: additional_records
+  data_type: uint16be

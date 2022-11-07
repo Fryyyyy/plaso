@@ -8,6 +8,8 @@ from dfdatetime import apfs_time as dfdatetime_apfs_time
 
 from plaso.containers import time_events
 
+from plaso.lib.aul import time as aul_time
+
 from plaso.lib import definitions as plaso_definitions
 from plaso.lib import dtfabric_helper
 from plaso.lib import errors
@@ -23,6 +25,18 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
 
   def ReadStatedumpChunkData(self, tracev3, parser_mediator, chunk_data,
                               data_offset):
+    """Parses the Statedump Chunk and adds a DateTimeEvent.
+
+    Args:
+      tracev3 (TraceV3FileParser): TraceV3 File Parser.
+      parser_mediator (ParserMediator): a parser mediator.
+      chunk_data (bytes): oversize chunk data.
+      data_offset (int): offset of the oversize chunk relative to the start
+        of the chunk set.
+
+    Raises:
+      ParseError: if the records cannot be parsed.
+    """
     logger.info("Reading Statedump")
     data_type_map = self._GetDataTypeMap('tracev3_statedump')
 
@@ -69,6 +83,11 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
       pass
     event_data.boot_uuid = tracev3.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex
     event_data.level = "StateDump"
+
+    ct = statedump_structure.continuous_time
+    ts = aul_time.FindClosestTimesyncItemInList(
+      tracev3.boot_uuid_ts_list.sync_records, ct)
+    time = ts.wall_time + ct - ts.kernel_continuous_timestamp
 
     if statedump_structure.data_type == aul.TraceV3FileParser.STATETYPE_PLIST:
       try:
@@ -134,13 +153,10 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
     event_data.pid = statedump_structure.first_number_proc_id
     logger.info("Log line: {0!s}".format(event_data.message))
 
-    ts = tracev3._FindClosestTimesyncItemInList(
-        tracev3.boot_uuid_ts_list, statedump_structure.continuous_time)
-    time = ts.wall_time + statedump_structure.continuous_time - ts.kernel_continuous_timestamp
-
     with open('/tmp/fryoutput.csv', 'a') as f:
       csv.writer(f).writerow([
-          tracev3._TimestampFromContTime(time), event_data.level,
+          dfdatetime_apfs_time.APFSTime(
+            timestamp=time).CopyToDateTimeString(), event_data.level,
           event_data.message
       ])
     event = time_events.DateTimeValuesEvent(

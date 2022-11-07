@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-'''Mac OpenDirectory helper.'''
+"""Mac OpenDirectory helper."""
 
 
 class ODMBRIdHelper(object):
-  '''OpenDirectory MBR ID helper.
+  """OpenDirectory MBR ID helper.
 
   See:
-    /Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include/membership.h
+/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include/membership.h
 
-  '''
+  """
   _OD_MBRID_TYPES = {
         0: 'UID',
         1: 'GID',
@@ -24,24 +24,24 @@ class ODMBRIdHelper(object):
 
   @classmethod
   def GetType(cls, code):
-    '''Retrieves the description for a specific type.
+    """Retrieves the description for a specific type.
 
     Args:
       code (int): type code
 
     Returns:
       str: name of the type code or None if not available.
-    '''
+    """
     return cls._OD_MBRID_TYPES.get(code, str(code))
 
 
 class ODErrorsHelper(object):
-  '''OpenDirectory errors helper.
+  """OpenDirectory errors helper.
 
   See:
     https://developer.apple.com/documentation/opendirectory/odframeworkerrors?changes=__2&language=objc
 
-  '''
+  """
 
   _OD_ERRORS = {
     0: 'ODErrorSuccess',
@@ -111,12 +111,12 @@ class ODErrorsHelper(object):
 
   @classmethod
   def GetError(cls, code):
-    '''Retrieves the description for a specific error code.
+    """Retrieves the description for a specific error code.
 
     Args:
       code (int): error code
 
     Returns:
       str: name of the error code or None if not available.
-    '''
+    """
     return cls._OD_ERRORS.get(code, str(code))
