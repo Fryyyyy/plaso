@@ -630,7 +630,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       chunkset_chunk_header = self._ReadStructureFromByteStream(
           uncompressed_data[data_offset:], data_offset, data_type_map)
       data_offset += 16
-      logger.info("Reading Decompressed Chunk: Size {0:d}".format(chunkset_chunk_header.chunk_data_size))
+      logger.info("Processing a chunk: Tag {0:d} // Size {1:d}".format(chunkset_chunk_header.chunk_tag, chunkset_chunk_header.chunk_data_size))
 
       data_end_offset = data_offset + chunkset_chunk_header.chunk_data_size
       chunkset_chunk_data = uncompressed_data[data_offset:data_end_offset]
@@ -1112,14 +1112,14 @@ class TraceV3FileParser(interface.FileObjectParser,
       data[offset:], offset, self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
-    if len(data[offset:]) < 6:
-      return
+    # if len(data[offset:]) < 6 and data_ref_id == 0:
+    #  return
 
     logger.info("After activity data: Unknown {0:d} // Number of Items {1:d}".format(data_meta.unknown1, data_meta.num_items))
     (log_data, deferred_data_items, offset) = self.ReadItems(data_meta, data, offset)
 
     backtrace_strings = []
-    if flags & self.HAS_CONTEXT_DATA != 0:
+    if flags & self.HAS_CONTEXT_DATA != 0 and len(data[offset:]) >= 6:
       logger.info("Backtrace data in Firehose log chunk")
       backtrace_strings = ["Backtrace:\n"]
       backtrace_data = self._ReadStructureFromByteStream(

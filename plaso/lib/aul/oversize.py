@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """The Apple Unified Logging (AUL) Oversize chunk parser."""
-import os
-
 from plaso.lib import errors
 
 from plaso.parsers import aul
@@ -45,8 +43,8 @@ class OversizeParser():
     oversize = tracev3_parser._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
     logger.info(
-      'Oversize data: ProcID 1 {0:d} // ProcID 2 {1:d} // '
-      'Ref Index {2:d} // CT {3:d}'
+      'Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // '
+      'Ref Index {2:d} // CT {3:d} (Oversize)'
       .format(oversize.first_number_proc_id, oversize.second_number_proc_id,
               oversize.data_ref_index, oversize.continuous_time))
 
