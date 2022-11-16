@@ -21,7 +21,12 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
   """StateDump data chunk parser"""
 
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'statedump.yaml')
+
+  # Statedump Types
+  _STATETYPE_PLIST = 0x1
+  _STATETYPE_PROTOBUF = 0x2
+  _STATETYPE_CUSTOM = 0x3
 
   def ReadStatedumpChunkData(self, tracev3, parser_mediator, chunk_data,
                               data_offset):
@@ -89,16 +94,16 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
       tracev3.boot_uuid_ts_list.sync_records, ct)
     time = ts.wall_time + ct - ts.kernel_continuous_timestamp
 
-    if statedump_structure.data_type == aul.TraceV3FileParser.STATETYPE_PLIST:
+    if statedump_structure.data_type == self._STATETYPE_PLIST:
       try:
         event_data.message = str(plistlib.loads(statedump_structure.data))
       except plistlib.InvalidFileException:
         logger.warning("Statedump PList not valid")
         return
-    elif statedump_structure.data_type == aul.TraceV3FileParser.STATETYPE_PROTOBUF:
+    elif statedump_structure.data_type == self._STATETYPE_PROTOBUF:
       event_data.message  = "Statedump Protocol Buffer"
       logger.error("Statedump Protobuf not supported")
-    elif statedump_structure.data_type == aul.TraceV3FileParser.STATETYPE_CUSTOM:
+    elif statedump_structure.data_type == self._STATETYPE_CUSTOM:
       if statedump_structure.string1 == "location":
         state_tracker_structure = {}
         extra_state_tracker_structure = {}

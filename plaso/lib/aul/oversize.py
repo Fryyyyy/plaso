@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """The Apple Unified Logging (AUL) Oversize chunk parser."""
+import os
+
+from plaso.lib import dtfabric_helper
+
 from plaso.lib import errors
 
-from plaso.parsers import aul
+from plaso.lib.aul import constants
+
 from plaso.parsers import logger
 
 
@@ -22,10 +27,12 @@ class OversizeData():
     self.second_proc_id = second_proc_id
     self.strings = []
 
-class OversizeParser():
+class OversizeParser(dtfabric_helper.DtFabricHelper):
   """Oversized data chunk parser"""
 
-  def ReadOversizeChunkData(self, tracev3_parser, chunk_data, data_offset):
+  _DEFINITION_FILE = os.path.join(os.path.dirname(__file__), 'oversize.yaml')
+
+  def ParseOversizeChunkData(self, tracev3_parser, chunk_data, data_offset):
     """Processes the Oversized data chunk.
 
     Args:
@@ -35,12 +42,12 @@ class OversizeParser():
         of the chunk set.
 
     Raises:
-      ParseError: if the oversize chunk cannot be read.
+      ParseError: if the oversize chunk cannot be parsed.
     """
     logger.info("Reading Oversize")
-    data_type_map = tracev3_parser._GetDataTypeMap('tracev3_oversize')
+    data_type_map = self._GetDataTypeMap('tracev3_oversize')
 
-    oversize = tracev3_parser._ReadStructureFromByteStream(
+    oversize = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
     logger.info(
       'Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // '
@@ -49,10 +56,10 @@ class OversizeParser():
               oversize.data_ref_index, oversize.continuous_time))
 
     offset = 0
-    data_meta = tracev3_parser._ReadStructureFromByteStream(
+    data_meta = self._ReadStructureFromByteStream(
       oversize.data,
       offset,
-      tracev3_parser._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
+      self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
     logger.info(
@@ -72,23 +79,23 @@ class OversizeParser():
       if item[2] == 0:
         oversize_strings.append((item[0], item[2], ""))
         continue
-      if item[0] in aul.TraceV3FileParser.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
+      if item[0] in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
         private_items.append((item, index))
         oversize_strings.append((item[0], item[2], '<private>'))
         continue
       oversize_strings.append(
           (item[0], item[2],
-           tracev3_parser._ReadStructureFromByteStream(
+           self._ReadStructureFromByteStream(
             oversize.data[offset + item[1]:],
             0,
-            tracev3_parser._GetDataTypeMap('cstring'))))
+            self._GetDataTypeMap('cstring'))))
       rolling_offset += item[2]
     offset = rolling_offset
     for item, index in private_items:
       oversize_strings[index] = (item[0], item[2],
-                                 tracev3_parser._ReadStructureFromByteStream(
+                                 self._ReadStructureFromByteStream(
                                      oversize.data[offset + item[1]:], 0,
-                                     tracev3_parser._GetDataTypeMap('cstring')))
+                                     self._GetDataTypeMap('cstring')))
 
     oversize = OversizeData(
       oversize.first_number_proc_id,
