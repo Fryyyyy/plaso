@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 """Mac Core Location services helper."""
+import os
+
+from plaso.lib import dtfabric_helper
+from plaso.lib import errors
 
 class ClientAuthStatusHelper(object):
   """Core Location Client Authorisation Status helper"""
@@ -70,3 +74,40 @@ class SubharvesterIDelper(object):
       str: name of the ID or None if not available.
     """
     return cls._SUBHARVESTER_ID.get(id, str(id))
+
+
+class LocationManagerStateTrackerParser(dtfabric_helper.DtFabricHelper):
+  """LocationManagerStateTracker data chunk parser"""
+
+  _DEFINITION_FILE = os.path.join(
+      os.path.dirname(__file__), 'location.yaml')
+
+  def Parse(self, size, data):
+    """Parses given data of a given size as a LocationManagerStateTracker chunk
+
+    Args:
+      size (int):  Size of the parsed data
+      data (bytes): Raw data
+
+    Returns:
+      tuple(Dict, Dict): The state tracker data and an optional extra structure
+        if running on Catalina.
+
+    Raises:
+      ParseError: if the data cannot be parsed.
+    """
+    state_tracker_structure = {}
+    extra_state_tracker_structure = {}
+
+    if size not in [64, 72]:
+      raise errors.ParseError(
+        "Possibly corrupted CLLocationManagerStateTracker block")
+    state_tracker_structure = self._ReadStructureFromByteStream(
+        data, 0, self._GetDataTypeMap(
+          'location_manager_state_data')).__dict__
+    if len(data) == 72:
+      extra_state_tracker_structure = self._ReadStructureFromByteStream(
+          data[64:], 64, self._GetDataTypeMap(
+            'location_manager_state_data_extra')).__dict__
+
+    return (state_tracker_structure, extra_state_tracker_structure)

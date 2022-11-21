@@ -3,7 +3,6 @@
 
 import base64
 import csv
-import os
 
 from dfdatetime import apfs_time as dfdatetime_apfs_time
 
@@ -14,18 +13,14 @@ from plaso.lib.aul import formatter
 from plaso.lib.aul import dsc
 
 from plaso.lib import definitions as plaso_definitions
-from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 
 from plaso.parsers import aul
 from plaso.parsers import logger
 
 
-class ActivityParser(dtfabric_helper.DtFabricHelper):
+class ActivityParser():
   """Activity data chunk parser"""
-
-  _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), "..", "..", "parsers", "aul.yaml")
 
   _USER_ACTION_ACTIVITY_TYPE = 0x3
 
@@ -43,7 +38,7 @@ class ActivityParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the non-activity chunk cannot be parsed.
     """
-    logger.info("Parsing activity")
+    logger.debug('Parsing activity')
 
     log_data = []
     offset = 0
@@ -69,86 +64,88 @@ class ActivityParser(dtfabric_helper.DtFabricHelper):
       event_data.process = uuid_file.library_path
     except IndexError:
       uuid_file = None
+    except AttributeError:
+      uuid_file = None
 
-    uint32_data_type_map = self._GetDataTypeMap("uint32")
-    uint64_data_type_map = self._GetDataTypeMap("uint64")
+    uint32_data_type_map = tracev3.GetDataTypeMap('uint32')
+    uint64_data_type_map = tracev3.GetDataTypeMap('uint64')
 
     if tracepoint.log_type != self._USER_ACTION_ACTIVITY_TYPE:
-      activity_id = self._ReadStructureFromByteStream(data, offset,
+      activity_id = tracev3.ReadStructureFromByteStream(data, offset,
                                                       uint32_data_type_map)
       offset += 4
-      sentinel = self._ReadStructureFromByteStream(data[offset:], offset,
+      sentinel = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                    uint32_data_type_map)
       offset += 4
 
     if flags & constants.UNIQUE_PID:
-      unique_pid = self._ReadStructureFromByteStream(data[offset:], offset,
+      unique_pid = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                      uint64_data_type_map)
       offset += 8
-      logger.info("Signpost has unique_pid: {0:d}".format(unique_pid))
+      logger.debug('Signpost has unique_pid: {0:d}'.format(unique_pid))
 
     if flags & constants.CURRENT_AID:
-      logger.info("Activity has current_aid")
-      activity_id = self._ReadStructureFromByteStream(data, offset,
+      logger.debug('Activity has current_aid')
+      activity_id = tracev3.ReadStructureFromByteStream(data, offset,
                                                       uint32_data_type_map)
       offset += 4
-      sentinel = self._ReadStructureFromByteStream(data[offset:], offset,
+      sentinel = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                    uint32_data_type_map)
       offset += 4
 
     if flags & constants.HAS_SUBSYSTEM:
-      logger.info("Activity has has_other_current_aid")
-      activity_id = self._ReadStructureFromByteStream(data, offset,
+      logger.debug('Activity has has_other_current_aid')
+      activity_id = tracev3.ReadStructureFromByteStream(data, offset,
                                                       uint32_data_type_map)
       offset += 4
-      sentinel = self._ReadStructureFromByteStream(data[offset:], offset,
+      sentinel = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                    uint32_data_type_map)
       offset += 4
 
-    message_string_reference = self._ReadStructureFromByteStream(
+    message_string_reference = tracev3.ReadStructureFromByteStream(
         data[offset:], offset, uint32_data_type_map)
     offset += 4
-    logger.info("Unknown PCID: {0:d}".format(message_string_reference))
+    logger.debug('Unknown PCID: {0:d}'.format(message_string_reference))
 
     ffh = formatter.FormatterFlagsHelper()
     formatter_flags = ffh.FormatFlags(tracev3, flags, data, offset)
     offset = formatter_flags.offset
 
     if flags & constants.PRIVATE_STRING_RANGE:
-      raise errors.ParseError("Activity with Private String Range")
+      raise errors.ParseError('Activity with Private String Range')
 
     # If there's data...
     if tracepoint.data_size - offset >= 6:
-      data_meta = self._ReadStructureFromByteStream(
+      data_meta = tracev3.ReadStructureFromByteStream(
           data[offset:], offset,
-          self._GetDataTypeMap("tracev3_firehose_tracepoint_data"))
+          tracev3.GetDataTypeMap('tracev3_firehose_tracepoint_data'))
       offset += 2
 
-      logger.info(
-          "After activity data: Unknown {0:d} // Number of Items {1:d}".format(
+      logger.debug(
+          'After activity data: Unknown {0:d} // Number of Items {1:d}'.format(
               data_meta.unknown1, data_meta.num_items))
       (log_data, deferred_data_items,
        offset) = tracev3.ReadItems(data_meta, data, offset)
 
       if flags & constants.HAS_CONTEXT_DATA != 0:
-        raise errors.ParseError("Backtrace data in Activity log chunk")
+        raise errors.ParseError('Backtrace data in Activity log chunk')
 
       if flags & constants.HAS_DATA_REF:
-        raise errors.ParseError("Activity log chunk with Data Ref")
+        raise errors.ParseError('Activity log chunk with Data Ref')
 
       #TODO(fryy): Functionise this
       for item in deferred_data_items:
         if item[2] == 0:
-          result = ""
+          result = ''
         elif item[0] in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
           if not private_string:
-            raise errors.ParseError("Trying to read from empty Private String")
+            raise errors.ParseError('Trying to read from empty Private String')
           try:
-            result = self._ReadStructureFromByteStream(
-                private_string[item[1]:], 0, self._GetDataTypeMap("cstring"))
-            logger.info("End result: {0:s}".format(result))
+            result = tracev3.ReadStructureFromByteStream(
+                private_string[item[1]:], 0, tracev3.GetDataTypeMap('cstring'))
+            logger.debug('End result: {0:s}'.format(result))
           except errors.ParseError:
-            result = ""  # Private
+            result = ''  # Private
         else:
           if item[0] in constants.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
             result = data[offset + item[1]:offset + item[1] + item[2]]
@@ -156,23 +153,31 @@ class ActivityParser(dtfabric_helper.DtFabricHelper):
             result = base64.encodebytes(data[offset + item[1]:offset + item[1] +
                                              item[2]]).strip()
           else:
-            result = self._ReadStructureFromByteStream(
-                data[offset + item[1]:], 0, self._GetDataTypeMap("cstring"))
-            logger.info("End result: {0:s}".format(result))
+            result = tracev3.ReadStructureFromByteStream(
+                data[offset + item[1]:], 0, tracev3.GetDataTypeMap('cstring'))
+            logger.debug('End result: {0:s}'.format(result))
         log_data.insert(item[3], (item[0], item[2], result))
 
     if formatter_flags.shared_cache or formatter_flags.large_shared_cache != 0:
-      if formatter_flags.large_offset_data != 0:
-        raise errors.ParseError(
-            "Large offset Activity not supported - activity.rs:140")
       extra_offset_value_result = tracepoint.format_string_location
+      if formatter_flags.large_offset_data != 0:
+        if formatter_flags.large_offset_data != formatter_flags.large_shared_cache / 2 and not formatter_flags.shared_cache:
+          # Recovery ?
+          formatter_flags.large_offset_data = formatter_flags.large_shared_cache / 2
+          extra_offset_value = '{0:X}{1:08x}'.format(formatter_flags.large_offset_data, tracepoint.format_string_location)
+        elif formatter_flags.shared_cache:
+          formatter_flags.large_offset_data = 8
+          extra_offset_value = '{0:X}{1:07x}'.format(formatter_flags.large_offset_data, tracepoint.format_string_location)
+        else:
+          extra_offset_value = '{0:X}{1:08x}'.format(formatter_flags.large_offset_data, tracepoint.format_string_location)
+        extra_offset_value_result = int(extra_offset_value, 16)
       (fmt, dsc_range) = tracev3.ExtractSharedStrings(
           tracepoint.format_string_location, extra_offset_value_result,
           dsc_file)
     else:
       if formatter_flags.absolute:
         raise errors.ParseError(
-            "Absolute Activity not supported - signpost.rs:224")
+            'Absolute Activity not supported - signpost.rs:224')
       elif formatter_flags.uuid_relative:
         uuid_file = tracev3.ExtractAltUUID(formatter_flags.uuid_relative)
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
@@ -180,11 +185,11 @@ class ActivityParser(dtfabric_helper.DtFabricHelper):
         fmt = tracev3.ExtractFormatStrings(tracepoint.format_string_location,
                                            uuid_file)
 
-    event_data.level = constants.LOG_TYPES.get(tracepoint.log_type, "Default")
+    event_data.level = constants.LOG_TYPES.get(tracepoint.log_type, 'Default')
 
     # Info is 'Create' when it's an Activity
     if tracepoint.log_type == 0x1:
-      event_data.level = "Create"
+      event_data.level = 'Create'
 
     if activity_id:
       event_data.activity_id = hex(activity_id)
@@ -197,7 +202,7 @@ class ActivityParser(dtfabric_helper.DtFabricHelper):
     event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
     event_data.message = tracev3.FormatString(fmt, log_data)
 
-    with open("/tmp/fryoutput.csv", "a") as f:
+    with open('/tmp/fryoutput.csv', 'a') as f:
       csv.writer(f).writerow([
           dfdatetime_apfs_time.APFSTime(timestamp=time).CopyToDateTimeString(),
           event_data.level, event_data.message

@@ -8,6 +8,8 @@ from dfdatetime import apfs_time as dfdatetime_apfs_time
 
 from plaso.containers import time_events
 
+from plaso.helpers.mac import location
+
 from plaso.lib.aul import time as aul_time
 
 from plaso.lib import definitions as plaso_definitions
@@ -127,17 +129,7 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
               statedump_structure.data, 0,
               self._GetDataTypeMap('location_tracker_client_data')).__dict__
         elif statedump_structure.string_name == "CLLocationManagerStateTracker":
-          if statedump_structure.data_size not in [64, 72]:
-            raise errors.ParseError(
-              "Possibly corrupted CLLocationManagerStateTracker block")
-          state_tracker_structure = self._ReadStructureFromByteStream(
-              statedump_structure.data, 0,
-              self._GetDataTypeMap('location_manager_state_data')).__dict__
-          if len(statedump_structure.data) == 72:
-            extra_state_tracker_structure = self._ReadStructureFromByteStream(
-                statedump_structure.data[64:], 64,
-                self._GetDataTypeMap(
-                    'location_manager_state_data_extra')).__dict__
+          state_tracker_structure, extra_state_tracker_structure = location.LocationManagerStateTrackerParser().Parse(statedump_structure.data_size, statedump_structure.data)
         else:
           raise errors.ParseError(
             "Unknown location Statedump Custom object not supported")

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The Apple Unified Logging (AUL) TraceV3 file parser."""
 
+import binascii
 import decimal
 import ipaddress
 import os
@@ -10,6 +11,7 @@ import lz4.block
 
 from dfdatetime import posix_time as dfdatetime_posix_time
 
+from plaso.helpers.mac import darwin
 from plaso.helpers.mac import dns
 from plaso.helpers.mac import location
 from plaso.helpers.mac import opendirectory
@@ -18,9 +20,11 @@ from plaso.helpers import sqlite
 from plaso.lib.aul import activity
 from plaso.lib.aul import constants
 from plaso.lib.aul import dsc
+from plaso.lib.aul import loss
 from plaso.lib.aul import nonactivity
 from plaso.lib.aul import oversize
 from plaso.lib.aul import signpost
+from plaso.lib.aul import simpledump
 from plaso.lib.aul import statedump
 from plaso.lib.aul import time as aul_time
 
@@ -36,7 +40,7 @@ class TraceV3FileParser(interface.FileObjectParser,
   """Apple Unified Logging and Activity Tracing (tracev3) file."""
 
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), "..", "..", "parsers", "aul.yaml")
+      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
 
   _CATALOG_LZ4_COMPRESSION = 0x100
 
@@ -45,11 +49,11 @@ class TraceV3FileParser(interface.FileObjectParser,
   _CHUNK_TAG_FIREHOSE = 0x6001
   _CHUNK_TAG_OVERSIZE = 0x6002
   _CHUNK_TAG_STATEDUMP = 0x6003
+  _CHUNK_TAG_SIMPLEDUMP = 0x6004
   _CHUNK_TAG_CATALOG = 0x600B
   _CHUNK_TAG_CHUNKSET = 0x600D
 
-  # Taken from https://github.com/mandiant/macos-UnifiedLogs/blob/main/src/unified_log.rs#L203
-  # format_strings_re = re.compile(r"(%(?:(?:\{[^}]+}?)(?:[-+0#]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l|ll|w|I|z|t|q|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@}]|(?:[-+0 #]{0,5})(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:h|hh|l||q|t|ll|w|I|z|I32|I64)?[cmCdiouxXeEfgGaAnpsSZP@%]))")
+  # Taken from https://github.com/ydkhatri/UnifiedLogReader/blob/master/UnifiedLog/tracev3_file.py#L56
   format_strings_re = re.compile(
       r"%(\{[^\}]{1,64}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFP])"
   )
@@ -98,6 +102,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     uuid_data_type_map = self._GetDataTypeMap('uuid_be')
     int8_data_type_map = self._GetDataTypeMap('char')
     uint8_data_type_map = self._GetDataTypeMap('uint8')
+    uint16_data_type_map = self._GetDataTypeMap('uint16')
     int32_data_type_map = self._GetDataTypeMap('int32')
     uint32_data_type_map = self._GetDataTypeMap('uint32')
     float32_data_type_map = self._GetDataTypeMap('float32')
@@ -149,21 +154,21 @@ class TraceV3FileParser(interface.FileObjectParser,
       #  bytes           %{bytes}d                4.72 kB
       #  iec-bytes       %{iec-bytes}d            4.61 KiB
       #  bitrate         %{bitrate}d              123 kbps
-      #  iec-bitrate     %{iec-bitrate}d          118 Kibps
+      #  iec-bitrate     %{iec-bitrate}d          118 Kib6s
       #  in_addr         %{network:in_addr}d      127.0.0.1
       #  in6_addr        %{network:in6_addr}.16P  fe80::f:86ff:fee9:5c16
 
       #TODO(fryy): Remove
       if custom_specifier and 'signpost' not in custom_specifier and 'name' not in custom_specifier and custom_specifier not in [
-          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}',
-          '{private, mask.hash}',
-          '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}',
-          '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}',
-          '{public, location:SqliteResult}', '{public,network:sockaddr}',
-          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}',
-          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}',
-          '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}',
-          '{public,BOOL}', '{public}', '{private}'
+          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}', '{mdns:dns.counts}', '{mdns:gaiopts}',
+          '{private, mask.hash}', 'mdns:dns.counts', '{mdns:nreason}', '{private,mask.hash}', '{sensitive}',
+          '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}', '{mdns:acceptable}',
+          '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}', '{mdns:yesno}',
+          '{public, location:SqliteResult}', '{public,network:sockaddr}', '{mdns:rrtype}', '{darwin.errno}',
+          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{mdns:dns.idflags}', '{public, location:_CLLocationManagerStateTrackerState}',
+          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}', '{mdns:protocol}', '{private, location:CLClientLocation}',
+          '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}', '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}',
+          '{bool,public}', '{public,BOOL}', '{public}', '{private}', '{public, network:in6_addr}', '{type:OSLaunchdJobState}'
       ]:
         logger.warning(
             'Custom specifier not supported: {}'.format(custom_specifier))
@@ -179,9 +184,13 @@ class TraceV3FileParser(interface.FileObjectParser,
         last_start_index -= 2
 
       if 'mask.hash' in custom_specifier and data_type == 0xF2:
-        pass  # decoder.rs:50
+        if isinstance(raw_data, bytes):
+          raw_data = raw_data.decode('utf-8').rstrip('\x00')
+        output += raw_data
+        i += 1
+        continue
 
-      if (data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES
+      if (data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]
          ) and len(raw_data) == 0 and (
              data_size == 0 or
              (data_type == constants.FIREHOSE_ITEM_STRING_PRIVATE and
@@ -263,12 +272,63 @@ class TraceV3FileParser(interface.FileObjectParser,
             # Timestamp in seconds ?
             output += dfdatetime_posix_time.PosixTime(
                 timestamp=number).CopyToDateTimeString()
+          elif 'darwin.errno' in custom_specifier:
+            output += "[{0:d}: {1:s}]".format(
+              number, darwin.DarwinErrorHelper.GetError(number))
           elif 'odtypes:ODError' in custom_specifier:
             output += opendirectory.ODErrorsHelper.GetError(number)
           elif 'odtypes:mbridtype' in custom_specifier:
             output += opendirectory.ODMBRIdHelper.GetType(number)
           elif 'location:CLClientAuthorizationStatus' in custom_specifier:
             output += location.ClientAuthStatusHelper.GetCode(number)
+          elif 'mdns:addrmv' in custom_specifier:
+            if number == 1:
+              output += "add"
+            else:
+              output += "rmv"
+          elif 'mdns:rrtype' in custom_specifier:
+            output += dns.DNS.GetRecordType(number)
+          elif 'mdns:yesno' in custom_specifier:
+            if number == 0:
+              output += "no"
+            else:
+              output += "yes"
+          elif 'mdns:protocol' in custom_specifier:
+            output += dns.DNS.GetProtocolType(number)
+          elif 'mdns:dns.idflags' in custom_specifier:
+            flags = self._ReadStructureFromByteStream(raw_data, 0, uint16_data_type_map)
+            dns_id = self._ReadStructureFromByteStream(raw_data[2:], 2, uint16_data_type_map)
+            flag_string = dns.DNS.ParseFlags(flags)
+            output += 'id: {0:s} ({1:d}), flags: 0x{2:04x} ({3:s})'.format(
+              hex(dns_id).upper(), dns_id, flags, flag_string)
+          elif 'mdns:dns.counts' in custom_specifier:
+            questions = self._ReadStructureFromByteStream(
+              raw_data[6:], 6, uint16_data_type_map)
+            answers = self._ReadStructureFromByteStream(
+              raw_data[4:], 4, uint16_data_type_map)
+            authority_records = self._ReadStructureFromByteStream(
+              raw_data[2:], 2, uint16_data_type_map)
+            additional_records = self._ReadStructureFromByteStream(
+              raw_data, 0, uint16_data_type_map)
+            output += 'counts: {0:d}/{1:d}/{2:d}/{3:d}'.format(
+              questions, answers,
+              authority_records, additional_records)
+          elif 'mdns:acceptable' in custom_specifier:
+            if number == 0:
+              output += "unacceptable"
+            else:
+              output += "acceptable"
+          elif '{mdns:nreason}' in custom_specifier:
+            output += dns.DNS.GetReasons(number)
+          elif '{mdns:gaiopts}' in custom_specifier:
+            if number == 0x8:
+              output += '0x8 {use-failover}'
+            elif number == 0xC:
+              output += '0xC {in-app-browser, use-failover}'
+            else:
+              logger.warning(
+                'Unknown DNS option: {0:d}'.format(number))
+              output += hex(number)
           else:
             try:
               output += format_code.format(number)
@@ -322,6 +382,8 @@ class TraceV3FileParser(interface.FileObjectParser,
           old = ('%' + flags_width_precision + specifier) % chars
           if flags_width_precision.isdigit():
             flags_width_precision = '>' + flags_width_precision
+          if flags_width_precision.startswith('-'):
+            flags_width_precision = '<' + flags_width_precision[1:]
           format_code = '{:' + flags_width_precision + specifier + '}'
           try:
             if old != format_code.format(chars):
@@ -330,7 +392,10 @@ class TraceV3FileParser(interface.FileObjectParser,
             pass
           except TypeError:
             pass
-          chars = format_code.format(chars)
+          try:
+            chars = format_code.format(chars)
+          except ValueError:
+            pass
         output += chars
       elif specifier == 'P':
         if not custom_specifier:
@@ -392,10 +457,7 @@ class TraceV3FileParser(interface.FileObjectParser,
               raw_data, 0, self._GetDataTypeMap('ipv4_address'))
           chars = self._FormatPackedIPv4Address(ip_addr.segments)
         elif 'network:in6_addr' in custom_specifier:
-          ip_addr = self._ReadStructureFromByteStream(
-              raw_data, 0, self._GetDataTypeMap('ipv6_address'))
-          chars = ipaddress.ip_address(
-              self._FormatPackedIPv4Address(ip_addr.segments)).compressed
+          chars = ipaddress.ip_address(raw_data).compressed
         elif 'location:SqliteResult' in custom_specifier:
           code = sqlite.SQLiteResultCodeHelper.GetResult(
               self._ReadStructureFromByteStream(raw_data, 0,
@@ -404,6 +466,12 @@ class TraceV3FileParser(interface.FileObjectParser,
             chars += '"{0:s}"'.format(code)
           else:
             raise errors.ParseError('Unknown SQLite Code')
+        elif 'location:_CLLocationManagerStateTrackerState' in custom_specifier:
+          state_tracker_structure, extra_state_tracker_structure = location.LocationManagerStateTrackerParser().Parse(data_size, raw_data)
+          chars = str({
+              **state_tracker_structure,
+              **extra_state_tracker_structure
+          })
         elif 'mdnsresponder:domain_name' in custom_specifier:
           chars = ''.join([
               '.' if not chr(s).isprintable() else chr(s)
@@ -411,16 +479,35 @@ class TraceV3FileParser(interface.FileObjectParser,
                   b'\r', b'')
           ])
         elif 'mdns:dnshdr' in custom_specifier:
-          # ID = 28454
-          # Recursion desired
           dnsheader = self._ReadStructureFromByteStream(
               raw_data, 0, self._GetDataTypeMap('dns_header'))
-          flag_string = dns.DNSFlags.ParseFlags(dnsheader.flags)
+          flag_string = dns.DNS.ParseFlags(dnsheader.flags)
           chars = ('id: {0:s} ({1:d}), flags: 0x{2:04x} ({3:s}), counts: '
                    '{4:d}/{5:d}/{6:d}/{7:d}').format(
               hex(dnsheader.id), dnsheader.id, dnsheader.flags, flag_string,
               dnsheader.questions, dnsheader.answers,
               dnsheader.authority_records, dnsheader.additional_records)
+        elif 'mdnsresponder:ip_addr' in custom_specifier:
+          ip_type = self._ReadStructureFromByteStream(raw_data[0], 0,
+            uint32_data_type_map)
+          if ip_type == 4:
+            ip_addr = self._ReadStructureFromByteStream(
+              raw_data[1:], 1, self._GetDataTypeMap('ipv4_address'))
+            chars = self._FormatPackedIPv4Address(ip_addr.segments)
+          elif ip_type == 6:
+            ip_addr = self._ReadStructureFromByteStream(
+              raw_data, 0, self._GetDataTypeMap('ipv6_address'))
+            chars = ipaddress.ip_address(
+                self._FormatPackedIPv6Address(ip_addr.segments)).compressed
+          else:
+            raise errors.ParseError(
+              'Unknown IP Type: {}'.format(ip_type))
+        # Nothing else to go on, so print it in hex
+        elif custom_specifier == '{public}':
+          chars = raw_data
+          if flags_width_precision.startswith('.'):
+            chars = raw_data[:int(flags_width_precision[1:])]
+          chars = binascii.hexlify(chars, ' ').decode('utf-8').upper()
         else:
           raise errors.ParseError(
               'Unknown data specifier: {}'.format(custom_specifier))
@@ -476,21 +563,21 @@ class TraceV3FileParser(interface.FileObjectParser,
     self.header, _ = self._ReadStructureFromFileObject(file_object, file_offset,
                                                        data_type_map)
 
-    logger.info('Header data: CT {0:d} // Bias {1:d}'.format(
+    logger.debug('Header data: CT {0:d} // Bias {1:d}'.format(
         self.header.continuous_time, self.header.bias_in_minutes))
-    logger.info('SI Info: BVS: {0:s} // HMS: {1:s}'.format(
+    logger.debug('SI Info: BVS: {0:s} // HMS: {1:s}'.format(
         self.header.systeminfo_subchunk.systeminfo_subchunk_data
         .build_version_string, self.header.systeminfo_subchunk
         .systeminfo_subchunk_data.hardware_model_string))
-    logger.info('Boot UUID: {0:s}'.format(
+    logger.debug('Boot UUID: {0:s}'.format(
         self.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex))
-    logger.info('TZ Info: {0:s}'.format(
+    logger.debug('TZ Info: {0:s}'.format(
         self.header.timezone_subchunk.timezone_subchunk_data.path_to_tzfile))
 
     self.boot_uuid_ts_list = aul_time.GetBootUuidTimeSyncList(
         self.timesync_parser.records,
         self.header.generation_subchunk.generation_subchunk_data.boot_uuid)
-    logger.info(
+    logger.debug(
         'Tracev3 Header Timestamp: %s',
         aul_time.TimestampFromContTime(
             self.boot_uuid_ts_list.sync_records,
@@ -512,12 +599,12 @@ class TraceV3FileParser(interface.FileObjectParser,
     catalog, offset_bytes = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
 
-    logger.info(
+    logger.debug(
         'Catalog data: NumProcs {0:d} // NumSubChunks {1:d} // EarliestFirehoseTS {2:d}'
         .format(catalog.number_of_process_information_entries,
                 catalog.number_of_sub_chunks,
                 catalog.earliest_firehose_timestamp))
-    logger.info('Num UUIDS: {0:d} // Num SubSystemStrings {1:d}'.format(
+    logger.debug('Num UUIDS: {0:d} // Num SubSystemStrings {1:d}'.format(
         len(catalog.uuids), len(catalog.sub_system_strings)))
 
     catalog.files = []
@@ -526,12 +613,15 @@ class TraceV3FileParser(interface.FileObjectParser,
       found = None
       found_in_cache = False
       filename = uuid.hex.upper()
-      logger.info('Encountered UUID {0:s} in Catalog.'.format(filename))
+      logger.debug('Encountered UUID {0:s} in Catalog.'.format(filename))
+      if filename == '00000000000000000000000000000000':
+        catalog.files.append(None)
+        continue
       for file in self.catalog_files:
         if file.uuid == filename:
           found = file
           found_in_cache = True
-          logger.info('Found in cache')
+          logger.debug('Found in cache')
           break
       if not found:
         found = self.dsc_parser.FindFile(parser_mediator, filename)
@@ -566,7 +656,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       except IndexError:
         pass
       process_entry.items = {}
-      logger.info('Process Entry data: PID {0:d} // EUID {1:d}'.format(
+      logger.debug('Process Entry data: PID {0:d} // EUID {1:d}'.format(
           process_entry.pid, process_entry.euid))
       for subsystem in process_entry.subsystems:
         offset = 0
@@ -582,7 +672,7 @@ class TraceV3FileParser(interface.FileObjectParser,
           offset += len(string) + 1
         process_entry.items[subsystem.identifier] = (subsystem_string,
                                                      category_string)
-        logger.info(
+        logger.debug(
             'Process Entry coalesce: Subsystem {0:s} // Category {1:s}'.format(
                 subsystem_string, category_string))
       catalog.process_entries.append(process_entry)
@@ -594,7 +684,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     for _ in range(catalog.number_of_sub_chunks):
       subchunk, new_bytes = self._ReadStructureFromFileObject(
           file_object, file_offset + offset_bytes, data_type_map)
-      logger.info('Catalog Subchunk data: Size {0:d}'.format(
+      logger.debug('Catalog Subchunk data: Size {0:d}'.format(
           subchunk.uncompressed_size))
       catalog.subchunks.append(subchunk)
       offset_bytes += new_bytes
@@ -648,7 +738,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     lz4_block_header, _ = self._ReadStructureFromFileObject(
         file_object, file_offset, data_type_map)
-    logger.info(
+    logger.debug(
         'Read LZ4 block: Compressed size {0:d} // Uncompressed size {1:d}'
         .format(lz4_block_header.compressed_data_size,
                 lz4_block_header.uncompressed_data_size))
@@ -661,7 +751,7 @@ class TraceV3FileParser(interface.FileObjectParser,
           uncompressed_size=lz4_block_header.uncompressed_data_size)
 
     elif lz4_block_header.signature == b'bv4-':
-      logger.info('It was already uncompressed!')
+      logger.debug('It was already uncompressed!')
       uncompressed_data = chunk_data[12:end_of_compressed_data_offset]
 
     else:
@@ -680,7 +770,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       chunkset_chunk_header = self._ReadStructureFromByteStream(
           uncompressed_data[data_offset:], data_offset, data_type_map)
       data_offset += 16
-      logger.info('Processing a chunk: Tag {0:d} // Size {1:d}'.format(
+      logger.debug('Processing a chunk: Tag {0:d} // Size {1:d}'.format(
           chunkset_chunk_header.chunk_tag,
           chunkset_chunk_header.chunk_data_size))
 
@@ -688,19 +778,25 @@ class TraceV3FileParser(interface.FileObjectParser,
       chunkset_chunk_data = uncompressed_data[data_offset:data_end_offset]
 
       if chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_FIREHOSE:
-        logger.info('Processing a Firehose Chunk (0x6001)')
+        logger.debug('Processing a Firehose Chunk (0x6001)')
         self._ReadFirehoseChunkData(parser_mediator, chunkset_chunk_data,
-                                    data_offset)
+          data_offset)
       elif chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_OVERSIZE:
-        logger.info('Processing an Oversize Chunk (0x6002)')
-        op = oversize.OversizeParser()
+        logger.debug('Processing an Oversize Chunk (0x6002)')
+        oversize_parser = oversize.OversizeParser()
         self.oversize_data.append(
-            op.ParseOversizeChunkData(self, chunkset_chunk_data, data_offset))
+            oversize_parser.ParseOversizeChunkData(
+              self, chunkset_chunk_data, data_offset))
       elif chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_STATEDUMP:
-        logger.info('Processing an Statedump Chunk (0x6003)')
-        sp = statedump.StatedumpParser()
-        sp.ReadStatedumpChunkData(self, parser_mediator, chunkset_chunk_data,
-                                  data_offset)
+        logger.debug('Processing an Statedump Chunk (0x6003)')
+        statedump_parser = statedump.StatedumpParser()
+        statedump_parser.ReadStatedumpChunkData(self, parser_mediator,
+          chunkset_chunk_data, data_offset)
+      elif chunkset_chunk_header.chunk_tag == self._CHUNK_TAG_SIMPLEDUMP:
+        logger.debug('Processing an Simpledump Chunk (0x6004)')
+        simpledump_parser = simpledump.SimpledumpParser()
+        simpledump_parser.ReadSimpledumpChunkData(self, parser_mediator,
+          chunkset_chunk_data, data_offset)
       else:
         raise errors.ParseError('Unsupported Chunk Type: {0:d}'.format(
             chunkset_chunk_header.chunk_tag))
@@ -733,7 +829,7 @@ class TraceV3FileParser(interface.FileObjectParser,
     """
     uuid_file = [f for f in self.catalog_files if f.uuid == uuid.hex.upper()]
     if len(uuid_file) != 1:
-      raise errors.ParseError("Couldn't find UUID file for {0:s}".format(
+      raise errors.ParseError('Couldn\'t find UUID file for {0:s}'.format(
           uuid.hex))
       # return 'UNKNOWN'
     return uuid_file[0]
@@ -743,10 +839,18 @@ class TraceV3FileParser(interface.FileObjectParser,
     """Extracts the absolute strings from the UUID file.
 
     Args:
-      original_offset (int):
-      uuid_file_index (int):
+      message_string_reference (int): Offset into file of message string
+      original_offset (int): Original offset into file
+      proc_info (tracev3_catalog_process_information_entry): Process Info entry
+      uuid_file_index (int): Which UUID file to extract from
+
+    Returns:
+      A uuid_file or a string.
+
+    Raises:
+      ParseError: if the data cannot be parsed.
     """
-    logger.info('Extracting absolute strings from UUID file')
+    logger.debug('Extracting absolute strings from UUID file')
     if original_offset & 0x80000000:
       return '%s'
 
@@ -762,11 +866,30 @@ class TraceV3FileParser(interface.FileObjectParser,
     return uuid_file
 
   def ExtractFormatStrings(self, offset, uuid_file):
-    logger.info('Extracting format string from UUID file')
+    """Extracts a format string from a UUID file.
+
+    Args:
+      offset (int): The offset into the file to grab the string.
+      uuid_file (UUIDText): The UUID file to search.
+
+    Returns:
+      str: The format string.
+    """
+    logger.debug('Extracting format string from UUID file')
     return uuid_file.ReadFormatString(offset)
 
   def ExtractSharedStrings(self, original_offset, extra_offset, dsc_file):
-    logger.info('Extracting format string from shared cache file (DSC)')
+    """Extracts a format string from a DSC file.
+
+    Args:
+      original_offset (int): The original offset into the file.
+      extra_offset (int): The calculated offset into the file.
+      dsc_file (DSCFile): The DSC file to search.
+
+    Returns:
+      str: The format string.
+    """
+    logger.debug('Extracting format string from shared cache file (DSC)')
 
     if original_offset & 0x80000000:
       return ('%s', dsc.DSCRange())
@@ -776,7 +899,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         dsc_range.string[extra_offset - dsc_range.range_offset:], 0,
         self._GetDataTypeMap('cstring'))
 
-    logger.info('Fmt string: {0:s}'.format(format_string))
+    logger.debug('Fmt string: {0:s}'.format(format_string))
     return (format_string, dsc_range)
 
   def ReadItems(self, data_meta, data, offset):
@@ -788,13 +911,13 @@ class TraceV3FileParser(interface.FileObjectParser,
           data[offset:], offset,
           self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item'))
       offset += 2 + data_item.item_size
-      logger.info('Item data: Type {0:d}'.format(data_item.item_type))
+      logger.debug('Item data: Type {0:d}'.format(data_item.item_type))
       if data_item.item_type in constants.FIREHOSE_ITEM_NUMBER_TYPES:
-        logger.info('Number: {0!s}'.format(data_item.item))
+        logger.debug('Number: {0!s}'.format(data_item.item))
         log_data.append(
             (data_item.item_type, data_item.item_size, data_item.item))
         index += 1
-      elif data_item.item_type == constants.FIREHOSE_ITEM_STRING_PRIVATE or data_item.item_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + constants.FIREHOSE_ITEM_STRING_TYPES:
+      elif data_item.item_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + constants.FIREHOSE_ITEM_STRING_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]:
         offset -= data_item.item_size
         string_message = self._ReadStructureFromByteStream(
             data[offset:], offset,
@@ -817,7 +940,7 @@ class TraceV3FileParser(interface.FileObjectParser,
                            private_strings):
     """Parses a log line"""
 
-    logger.info('Parsing log line')
+    logger.debug('Parsing log line')
     log_type = constants.LOG_TYPES.get(tracepoint.log_type, 'Default')
     if tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_NONACTIVITY:
       if log_type == 0x80:
@@ -832,6 +955,10 @@ class TraceV3FileParser(interface.FileObjectParser,
     elif tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_ACTIVITY:
       ap = activity.ActivityParser()
       ap.ParseActivity(self, parser_mediator, tracepoint, proc_info, time)
+    elif tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
+      # This is Loss
+      lp = loss.LossParser()
+      lp.ParseLoss(self, parser_mediator, tracepoint, proc_info, time)
     else:
       raise errors.ParseError('Unsupported log activity type: {}'.format(
           tracepoint.log_activity_type))
@@ -848,13 +975,13 @@ class TraceV3FileParser(interface.FileObjectParser,
     Raises:
       ParseError: if the firehose chunk cannot be read.
     """
-    logger.info('Reading Firehose')
+    logger.debug('Reading Firehose')
     data_type_map = self._GetDataTypeMap('tracev3_firehose_header')
 
     firehose_header = self._ReadStructureFromByteStream(chunk_data, data_offset,
                                                         data_type_map)
 
-    logger.info(
+    logger.debug(
         'Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // TTL {2:d} // CT {3:d}'
         .format(firehose_header.first_number_proc_id,
                 firehose_header.second_number_proc_id, firehose_header.ttl,
@@ -874,12 +1001,12 @@ class TraceV3FileParser(interface.FileObjectParser,
     private_strings = None
     private_data_len = 0
     if firehose_header.private_data_virtual_offset != 4096:
-      logger.info('Parsing Private Firehose Data')
+      logger.debug('Parsing Private Firehose Data')
       private_data_len = 4096 - firehose_header.private_data_virtual_offset
       private_strings = (firehose_header.private_data_virtual_offset,
                          chunk_data[-private_data_len:])
 
-    logger.info(
+    logger.debug(
         'Firehose Header Timestamp: %s',
         aul_time.TimestampFromContTime(self.boot_uuid_ts_list.sync_records,
                                        firehose_header.base_continuous_time))
@@ -891,7 +1018,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       firehose_tracepoint = self._ReadStructureFromByteStream(
           chunk_data[chunk_data_offset:], data_offset + chunk_data_offset,
           tracepoint_map)
-      logger.info(
+      logger.debug(
           'Firehose Tracepoint data: ActivityType {0:d} // Flags {1:d} // ThreadID {2:d} // Datasize {3:d}'
           .format(firehose_tracepoint.log_activity_type,
                   firehose_tracepoint.flags,
@@ -934,17 +1061,17 @@ class TraceV3FileParser(interface.FileObjectParser,
       file_offset += 16
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_HEADER:
-        logger.info('Processing a HEADER (0x1000)')
+        logger.debug('Processing a HEADER (0x1000)')
         self._ReadHeader(file_object, file_offset)
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_CATALOG:
-        logger.info('Processing a CATALOG (0x600B)')
+        logger.debug('Processing a CATALOG (0x600B)')
         self.catalog = self._ReadCatalog(parser_mediator, file_object,
                                          file_offset)
         chunkset_index = 0
 
       if chunk_header.chunk_tag == self._CHUNK_TAG_CHUNKSET:
-        logger.info('Processing a CHUNKSET (0x600D)')
+        logger.debug('Processing a CHUNKSET (0x600D)')
         self._ReadChunkSet(parser_mediator, file_object, file_offset,
                            chunk_header, chunkset_index)
         chunkset_index += 1

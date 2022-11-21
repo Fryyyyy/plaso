@@ -2,13 +2,14 @@
 """The Apple Unified Logging (AUL) Non-activity chunk parser."""
 import base64
 import csv
-import os
 
 from dfdatetime import apfs_time as dfdatetime_apfs_time
+
 from plaso.containers import time_events
+
 from plaso.lib import definitions as plaso_definitions
-from plaso.lib import dtfabric_helper
 from plaso.lib import errors
+
 from plaso.lib.aul import constants
 from plaso.lib.aul import dsc
 from plaso.lib.aul import formatter
@@ -16,11 +17,8 @@ from plaso.parsers import aul
 from plaso.parsers import logger
 
 
-class NonactivityParser(dtfabric_helper.DtFabricHelper):
+class NonactivityParser():
   """Non-activity data chunk parser"""
-
-  _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), "..", "..", "parsers", "aul.yaml")
 
   _NON_ACTIVITY_SENINTEL = 0x80000000
 
@@ -40,7 +38,7 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the non-activity chunk cannot be parsed.
     """
-    logger.info("Parsing non-activity")
+    logger.debug('Parsing non-activity')
 
     log_data = []
     offset = 0
@@ -68,64 +66,64 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
     except IndexError:
       uuid_file = None
 
-    uint8_data_type_map = self._GetDataTypeMap("uint8")
-    uint16_data_type_map = self._GetDataTypeMap("uint16")
-    uint32_data_type_map = self._GetDataTypeMap("uint32")
+    uint8_data_type_map = tracev3.GetDataTypeMap('uint8')
+    uint16_data_type_map = tracev3.GetDataTypeMap('uint16')
+    uint32_data_type_map = tracev3.GetDataTypeMap('uint32')
 
     if flags & constants.CURRENT_AID:
-      logger.info("Non-activity has current_aid")
+      logger.info('Non-activity has current_aid')
 
-      activity_id = self._ReadStructureFromByteStream(data, offset,
+      activity_id = tracev3.ReadStructureFromByteStream(data, offset,
                                                       uint32_data_type_map)
       offset += 4
-      sentinel = self._ReadStructureFromByteStream(data[offset:], offset,
+      sentinel = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                    uint32_data_type_map)
       offset += 4
       if sentinel != self._NON_ACTIVITY_SENINTEL:
-        raise errors.ParseError("Incorrect sentinel value for Non-Activity")
+        raise errors.ParseError('Incorrect sentinel value for Non-Activity')
 
     if flags & constants.PRIVATE_STRING_RANGE:
       logger.info(
-          "Non-activity has private_string_range (has_private_data flag)")
+          'Non-activity has private_string_range (has_private_data flag)')
 
-      private_strings_offset = self._ReadStructureFromByteStream(
+      private_strings_offset = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
-      private_strings_size = self._ReadStructureFromByteStream(
+      private_strings_size = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
 
-    message_string_reference = self._ReadStructureFromByteStream(
+    message_string_reference = tracev3.ReadStructureFromByteStream(
         data[offset:], offset, uint32_data_type_map)
     offset += 4
-    logger.info("Unknown PCID: {0:d}".format(message_string_reference))
+    logger.info('Unknown PCID: {0:d}'.format(message_string_reference))
 
     if flags & constants.HAS_ALTERNATE_UUID:
       if flags & constants.HAS_MESSAGE_IN_UUIDTEXT:
-        logger.info("Non-activity: Has Alternate UUID & Message in UUIDText")
+        logger.info('Non-activity: Has Alternate UUID & Message in UUIDText')
       else:
         logger.info(
-            "Non-activity: Has Alternate UUID & _NO_ Message in UUIDText")
+            'Non-activity: Has Alternate UUID & _NO_ Message in UUIDText')
 
     ffh = formatter.FormatterFlagsHelper()
     formatter_flags = ffh.FormatFlags(tracev3, flags, data, offset)
     offset = formatter_flags.offset
 
-    subsystem_value = ""
+    subsystem_value = ''
     if flags & constants.HAS_SUBSYSTEM:
-      subsystem_value = self._ReadStructureFromByteStream(
+      subsystem_value = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.info("Non-activity has subsystem: {0:d}".format(subsystem_value))
+      logger.info('Non-activity has subsystem: {0:d}'.format(subsystem_value))
 
     if flags & constants.HAS_TTL:
-      ttl_value = self._ReadStructureFromByteStream(data[offset:], offset,
+      ttl_value = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                     uint8_data_type_map)
       offset += 1
       logger.info("Non-activity has TTL: {0:d}".format(ttl_value))
 
     if flags & constants.HAS_DATA_REF:
-      data_ref_id = self._ReadStructureFromByteStream(data[offset:], offset,
+      data_ref_id = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                       uint16_data_type_map)
       offset += 1
       logger.info("Non-activity with data reference: {0:d}".format(data_ref_id))
@@ -159,9 +157,9 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
     if tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_LOSS:
       raise errors.ParseError("Loss Type not supported")
 
-    data_meta = self._ReadStructureFromByteStream(
+    data_meta = tracev3.ReadStructureFromByteStream(
         data[offset:], offset,
-        self._GetDataTypeMap("tracev3_firehose_tracepoint_data"))
+        tracev3.GetDataTypeMap("tracev3_firehose_tracepoint_data"))
     offset += 2
 
     logger.info(
@@ -174,8 +172,8 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
     if flags & constants.HAS_CONTEXT_DATA != 0 and len(data[offset:]) >= 6:
       logger.info("Backtrace data in Firehose log chunk")
       backtrace_strings = ["Backtrace:\n"]
-      backtrace_data = self._ReadStructureFromByteStream(
-          data[offset:], offset, self._GetDataTypeMap("tracev3_backtrace"))
+      backtrace_data = tracev3.ReadStructureFromByteStream(
+          data[offset:], offset, tracev3.GetDataTypeMap("tracev3_backtrace"))
       for count, idx in enumerate(backtrace_data.indices):
         try:
           backtrace_strings.append("{0:s} +0x{1:d}\n".format(
@@ -190,6 +188,8 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
 
     #TODO(fryy): Turn item tuple into an object with names
     for item in deferred_data_items:
+      if item is None:
+        continue
       if item[2] == 0:
         result = ""
       elif item[0] in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
@@ -198,11 +198,18 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
         if item[0] in constants.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
           result = private_string[item[1]:item[1] + item[2]]
         else:
-          result = self._ReadStructureFromByteStream(
-              private_string[item[1]:], 0, self._GetDataTypeMap("cstring"))
+          result = tracev3.ReadStructureFromByteStream(
+              private_string[item[1]:], 0, tracev3.GetDataTypeMap("cstring"))
           logger.info("End result: {0:s}".format(result))
       elif item[0] == constants.FIREHOSE_ITEM_STRING_PRIVATE:
-        result = private_string[item[1]:item[1] + item[2]]
+        if not private_string:
+          # A <private> string
+          if item[2] == 0x8000:
+            result = ""
+          else:
+            raise errors.ParseError("Trying to read from empty Private String")
+        else:
+          result = private_string[item[1]:item[1] + item[2]]
       else:
         if item[0] in constants.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES:
           result = data[offset + item[1]:offset + item[1] + item[2]]
@@ -210,8 +217,11 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
           result = base64.encodebytes(data[offset + item[1]:offset + item[1] +
                                            item[2]]).strip()
         else:
-          result = self._ReadStructureFromByteStream(
-              data[offset + item[1]:], 0, self._GetDataTypeMap("cstring"))
+          try:
+            result = tracev3.ReadStructureFromByteStream(
+                data[offset + item[1]:], 0, tracev3.GetDataTypeMap("cstring"))
+          except errors.ParseError:
+            result = data[offset + item[1]:].decode('utf-8')
           logger.info("End result: {0:s}".format(result))
       log_data.insert(item[3], (item[0], item[2], result))
 
@@ -246,7 +256,11 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
         uuid_file = tracev3.ExtractAbsoluteStrings(
             tracepoint.format_string_location, formatter_flags.uuid_file_index,
             proc_info, message_string_reference)
-        fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+        if uuid_file != '%s':
+          fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+        else:
+          fmt = uuid_file
+          uuid_file = None
       elif formatter_flags.uuid_relative:
         uuid_file = tracev3.ExtractAltUUID(formatter_flags.uuid_relative)
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
@@ -288,8 +302,10 @@ class NonactivityParser(dtfabric_helper.DtFabricHelper):
     event_data.euid = proc_info.euid
     event_data.subsystem = (proc_info.items.get(subsystem_value, ("", "")))[0]
     event_data.category = (proc_info.items.get(subsystem_value, ("", "")))[1]
-    event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
-    event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
+    if dsc_range.path or uuid_file:
+      event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
+    if dsc_range.uuid or uuid_file:
+      event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
 
     logger.info("Log line: {0!s}".format(event_data.message))
     with open("/tmp/fryoutput.csv", "a") as f:

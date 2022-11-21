@@ -30,7 +30,7 @@ class ODMBRIdHelper(object):
       code (int): type code
 
     Returns:
-      str: name of the type code or None if not available.
+      str: name of the type code.
     """
     return cls._OD_MBRID_TYPES.get(code, str(code))
 
@@ -117,6 +117,6 @@ class ODErrorsHelper(object):
       code (int): error code
 
     Returns:
-      str: name of the error code or None if not available.
+      str: name of the error code.
     """
     return cls._OD_ERRORS.get(code, str(code))

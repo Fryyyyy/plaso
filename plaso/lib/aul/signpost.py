@@ -52,6 +52,8 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
 
     event_data = aul.AULEventData()
     event_data.boot_uuid = tracev3.header.generation_subchunk.generation_subchunk_data.boot_uuid.hex
+    event_data.pid = proc_info.pid
+    event_data.euid = proc_info.euid
 
     try:
       dsc_file = tracev3.catalog.files[proc_info.catalog_dsc_index]
