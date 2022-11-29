@@ -22,7 +22,7 @@ class ClientAuthStatusHelper(object):
       code (int): status code
 
     Returns:
-      str: name of the status code or None if not available.
+      str: name of the status code.
     """
     return cls._AUTH_STATUS_CODES.get(code, str(code))
 
@@ -42,12 +42,12 @@ class DaemonStatusHelper(object):
       code (int): status code
 
     Returns:
-      str: name of the status code or None if not available.
+      str: name of the status code.
     """
     return cls._DAEMON_STATUS_CODES.get(code, str(code))
 
-class SubharvesterIDelper(object):
-  """Core Location Subharvster ID helper"""
+class SubharvesterIDHelper(object):
+  """Core Location Subharvester ID helper"""
   _SUBHARVESTER_ID = {
     1: 'Wifi',
     2: 'Tracks',
@@ -64,16 +64,16 @@ class SubharvesterIDelper(object):
     13: 'Unknown'}
 
   @classmethod
-  def GetCode(cls, id):
+  def GetCode(cls, subharvester_id):
     """Retrieves the description for an ID.
 
     Args:
-      id (int): identifier
+      subharvester_id (int): identifier
 
     Returns:
-      str: name of the ID or None if not available.
+      str: name of the ID.
     """
-    return cls._SUBHARVESTER_ID.get(id, str(id))
+    return cls._SUBHARVESTER_ID.get(subharvester_id, str(subharvester_id))
 
 
 class LocationManagerStateTrackerParser(dtfabric_helper.DtFabricHelper):
@@ -111,3 +111,44 @@ class LocationManagerStateTrackerParser(dtfabric_helper.DtFabricHelper):
             'location_manager_state_data_extra')).__dict__
 
     return (state_tracker_structure, extra_state_tracker_structure)
+
+
+class LocationTrackerIOHelper(object):
+  """Location Tracker IO Message helper"""
+  _IO_MESSAGE = {
+    3758097008: 'CanSystemSleep',
+    3758097024: 'SystemWillSleep',
+    3758097040: 'SystemWillNotSleep',
+    3758097184: 'SystemWillPowerOn',
+    3758097168: 'SystemWillRestart',
+    3758097152: 'SystemHasPoweredOn',
+    3758097200: 'CopyClientID',
+    3758097216: 'SystemCapabilityChange',
+    3758097232: 'DeviceSignaledWakeup',
+    3758096400: 'ServiceIsTerminated',
+    3758096416: 'ServiceIsSuspended',
+    3758096432: 'ServiceIsResumed',
+    3758096640: 'ServiceIsRequestingClose',
+    3758096641: 'ServiceIsAttemptingOpen',
+    3758096656: 'ServiceWasClosed',
+    3758096672: 'ServiceBusyStateChange',
+    3758096680: 'ConsoleSecurityChange',
+    3758096688: 'ServicePropertyChange',
+    3758096896: 'CanDevicePowerOff',
+    3758096912: 'DeviceWillPowerOff',
+    3758096928: 'DeviceWillNotPowerOff',
+    3758096944: 'DeviceHasPoweredOn',
+    3758096976: 'SystemWillPowerOff',
+    3758096981: 'SystemPagingOff'}
+
+  @classmethod
+  def GetMessage(cls, message_id):
+    """Retrieves the description for a message ID.
+
+    Args:
+      message_id (int): identifier
+
+    Returns:
+      str: name of the ID.
+    """
+    return cls._IO_MESSAGE.get(message_id, str(message_id))

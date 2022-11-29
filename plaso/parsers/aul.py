@@ -9,7 +9,6 @@ from plaso.lib.aul import timesync
 from plaso.lib.aul import tracev3
 from plaso.lib.aul import uuidfile
 
-from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 from plaso.lib import specification
 from plaso.parsers import interface
@@ -38,7 +37,7 @@ class AULEventData(events.EventData):
     self.ttl = None
 
 
-class AULParser(interface.FileEntryParser, dtfabric_helper.DtFabricHelper):
+class AULParser(interface.FileEntryParser):
   """Parser for Apple Unified Logging (AUL) files."""
 
   NAME = 'aul_log'

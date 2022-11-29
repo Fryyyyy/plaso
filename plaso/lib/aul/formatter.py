@@ -86,7 +86,7 @@ class FormatterFlagsHelper():
           data[offset:], offset, uint16_data_type_map)
         offset += 2
     elif flags & self._FLAG_CHECK == self._HAS_FMT_IN_UUID:
-      logger.info('main_exe')
+      logger.info('main_exe') #TODO(fryy): Remove
     elif flags & self._FLAG_CHECK == self._HAS_SHARED_CACHE:
       logger.info('shared_cache')
       ret.shared_cache = True

@@ -57,6 +57,7 @@ class UUIDText(dtfabric_helper.DtFabricHelper):
         return self._ReadStructureFromByteStream(
           self.data[data_offset + rel_offset:],
           0, self._GetDataTypeMap('cstring'))
+    return ''
 
 class UUIDFileParser(
   interface.FileObjectParser, dtfabric_helper.DtFabricHelper):

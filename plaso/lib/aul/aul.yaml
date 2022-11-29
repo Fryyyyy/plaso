@@ -111,9 +111,7 @@ members:
 - name: chunk_sub_tag
   data_type: uint32
 - name: chunk_data_size
-  data_type: uint32
-- name: unknown1
-  data_type: uint32
+  data_type: uint64
 ---
 name: tracev3_header_systeminfo_subchunk
 type: structure
@@ -240,26 +238,15 @@ attributes:
   byte_order: little-endian
 members:
 - name: size
-# UnifiedLogReader: ref_data_size
   data_type: uint32
 - name: unknown
   data_type: uint32
 - name: catalog_uuid_index
-# UnifiedLogReader: uuid_file_index
   data_type: uint16
-#- name: load_address
-#  type: stream
-#  element_data_type: byte
-#  number_of_elements: 6
 - name: absolute_offset
   data_type: uint32
 - name: absolute_ref
   data_type: uint16
-# UnifiedLogReader: ref_v_offset 4 bytes
-#                   ref_id       2 bytes
-# Mandiant:
-# Adds padding to bring it up to uint64
-# Used in message.rs:305
 ---
 name: tracev3_catalog_subsystem_entry
 type: structure
@@ -281,22 +268,16 @@ attributes:
   byte_order: little-endian
 members:
 - name: index
-# UnifiedLogReader "id"
   data_type: uint16
 - name: unknown1
-# UnifiedLogReader "flags"
   data_type: uint16
 - name: main_uuid_index
-# UnifiedLogReader "file_id"
   data_type: uint16
 - name: catalog_dsc_index
-# UnifiedLogReader "dsc_file_index"
   data_type: uint16
 - name: first_number_proc_id
-# UnifiedLogReader "proc_id1"
   data_type: uint64
 - name: second_number_proc_id
-# UnifiedLogReader "proc_id2"
   data_type: uint32
 - name: pid
   data_type: uint32
@@ -305,7 +286,6 @@ members:
 - name: unknown2
   data_type: uint32
 - name: num_uuid_entries
-# UnifiedLogReader "num_extra_uuid_refs"
   data_type: uint32
 - name: unknown3
   data_type: uint32
@@ -420,9 +400,6 @@ members:
   type: sequence
   element_data_type: uint8
   number_of_elements: tracev3_backtrace.number_offsets
-#- name: alignment_padding
-#  type: padding
-#  alignment_size: 4
 ---
 name: tracev3_oversize
 type: structure
@@ -459,11 +436,6 @@ members:
   data_type: uint64
 - name: second_number_proc_id
   data_type: uint32
-# UnifiedLogReader tracev3_file:774
-#- name: ttl
-#  data_type: uint32
-# Mandiant
-# firehose_logs.rs:114
 - name: ttl
   data_type: uint8
 - name: collapsed
@@ -471,10 +443,8 @@ members:
 - name: unknown1
   data_type: uint16
 - name: public_data_size
-# UnifiedLogReader "offset_strings"
   data_type: uint16
 - name: private_data_virtual_offset
-# UnfiedLogReader "strings_v_offset"
   data_type: uint16
 - name: unknown2
   data_type: uint16
@@ -527,15 +497,12 @@ attributes:
   byte_order: little-endian
 members:
 - name: log_activity_type
-# UnifiedLogReader: u1 (uint16)
   data_type: uint8
 - name: log_type
   data_type: uint8
 - name: flags
-# UnifiedLogReader: u2
   data_type: uint16
 - name: format_string_location
-# UnifiedLogReader: fmt_str_v_offset
   data_type: uint32
 - name: thread_identifier
   data_type: uint64
@@ -552,32 +519,6 @@ members:
 - name: alignment_padding
   type: padding
   alignment_size: 8
----
-name: tracev3_firehose_log_message_entries
-type: structure
-description: TraceV3 firehose log message entries.
-attributes:
-  byte_order: little-endian
-members:
-- name: item_type
-  data_type: uint8
-- name: item_size
-  data_type: uint8
----
-name: tracev3_firehose_log_messages
-type: structure
-description: TraceV3 firehose log messages.
-attributes:
-  byte_order: little-endian
-members:
-- name: unknown1
-  data_type: uint8
-- name: num_items
-  data_type: uint8
-- name: items
-  type: stream
-  element_data_type: tracev3_firehose_log_message_entries
-  number_of_elements: num_items
 ---
 name: mbr_group_type
 type: structure

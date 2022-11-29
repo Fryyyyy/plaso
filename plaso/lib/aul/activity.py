@@ -163,7 +163,7 @@ class ActivityParser():
       if formatter_flags.large_offset_data != 0:
         if formatter_flags.large_offset_data != formatter_flags.large_shared_cache / 2 and not formatter_flags.shared_cache:
           # Recovery ?
-          formatter_flags.large_offset_data = formatter_flags.large_shared_cache / 2
+          formatter_flags.large_offset_data = int(formatter_flags.large_shared_cache / 2)
           extra_offset_value = '{0:X}{1:08x}'.format(formatter_flags.large_offset_data, tracepoint.format_string_location)
         elif formatter_flags.shared_cache:
           formatter_flags.large_offset_data = 8
@@ -184,7 +184,7 @@ class ActivityParser():
       else:
         fmt = tracev3.ExtractFormatStrings(tracepoint.format_string_location,
                                            uuid_file)
-
+    # TODO(fryy): if not fmt and not log_data: continue
     event_data.level = constants.LOG_TYPES.get(tracepoint.log_type, 'Default')
 
     # Info is 'Create' when it's an Activity
@@ -193,13 +193,13 @@ class ActivityParser():
 
     if activity_id:
       event_data.activity_id = hex(activity_id)
-    event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
-    event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
     event_data.thread_id = hex(tracepoint.thread_identifier)
     event_data.pid = proc_info.pid
     event_data.euid = proc_info.euid
-    event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
-    event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
+    if dsc_range.path or uuid_file:
+      event_data.library = dsc_range.path if dsc_range.path else uuid_file.library_path
+    if dsc_range.uuid or uuid_file:
+      event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
     event_data.message = tracev3.FormatString(fmt, log_data)
 
     with open('/tmp/fryoutput.csv', 'a') as f:

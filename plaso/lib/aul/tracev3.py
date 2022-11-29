@@ -6,6 +6,7 @@ import decimal
 import ipaddress
 import os
 import re
+import stat
 
 import lz4.block
 
@@ -40,7 +41,7 @@ class TraceV3FileParser(interface.FileObjectParser,
   """Apple Unified Logging and Activity Tracing (tracev3) file."""
 
   _DEFINITION_FILE = os.path.join(
-      os.path.dirname(__file__), '..', '..', 'parsers', 'aul.yaml')
+      os.path.dirname(__file__), 'aul.yaml')
 
   _CATALOG_LZ4_COMPRESSION = 0x100
 
@@ -55,7 +56,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
   # Taken from https://github.com/ydkhatri/UnifiedLogReader/blob/master/UnifiedLog/tracev3_file.py#L56
   format_strings_re = re.compile(
-      r"%(\{[^\}]{1,64}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFP])"
+      r"%(\{[^\}]{1,64}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFPm])"
   )
 
   def __init__(self, timesync_parser, uuid_parser, dsc_parser):
@@ -144,10 +145,12 @@ class TraceV3FileParser(interface.FileObjectParser,
       #  bool            %{bool}d                 true
       #  sockaddr        %{network:sockaddr}.*P   fe80::f:86ff:fee9:5c16
       #  time_t          %{time_t}d               2016-01-12 19:41:37
+      #  darwin.errno    %{darwin.errno}d         [32: Broken pipe]
+      #  in_addr         %{network:in_addr}d      127.0.0.1
+      #  in6_addr        %{network:in6_addr}.16P  fe80::f:86ff:fee9:5c16
+      #  darwin.mode     %{darwin.mode}d          drwxr-xr-x
       #TODO(fryy): Implement
       #  Value type      Custom specifier         Example output
-      #  darwin.errno    %{darwin.errno}d         [32: Broken pipe]
-      #  darwin.mode     %{darwin.mode}d          drwxr-xr-x
       #  darwin.signal   %{darwin.signal}d        [sigsegv: Segmentation Fault]
       #  timeval         %{timeval}.*P            2016-01-12 19:41:37.774236
       #  timespec        %{timespec}.*P           2016-01-12 19:41:37.2382382823
@@ -155,20 +158,28 @@ class TraceV3FileParser(interface.FileObjectParser,
       #  iec-bytes       %{iec-bytes}d            4.61 KiB
       #  bitrate         %{bitrate}d              123 kbps
       #  iec-bitrate     %{iec-bitrate}d          118 Kib6s
-      #  in_addr         %{network:in_addr}d      127.0.0.1
-      #  in6_addr        %{network:in6_addr}.16P  fe80::f:86ff:fee9:5c16
 
       #TODO(fryy): Remove
       if custom_specifier and 'signpost' not in custom_specifier and 'name' not in custom_specifier and custom_specifier not in [
-          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}', '{mdns:dns.counts}', '{mdns:gaiopts}',
-          '{private, mask.hash}', 'mdns:dns.counts', '{mdns:nreason}', '{private,mask.hash}', '{sensitive}',
-          '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}', '{mdns:acceptable}',
-          '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}', '{mdns:yesno}',
-          '{public, location:SqliteResult}', '{public,network:sockaddr}', '{mdns:rrtype}', '{darwin.errno}',
-          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{mdns:dns.idflags}', '{public, location:_CLLocationManagerStateTrackerState}',
-          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}', '{mdns:protocol}', '{private, location:CLClientLocation}',
-          '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}', '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}',
-          '{bool,public}', '{public,BOOL}', '{public}', '{private}', '{public, network:in6_addr}', '{type:OSLaunchdJobState}'
+          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}',
+          '{mdns:dns.counts}', '{mdns:gaiopts}', '{private,bluetooth:BD_ADDR}',
+          '{private, mask.hash}', 'mdns:dns.counts', '{mdns:nreason}',
+          '{private,mask.hash}', '{sensitive}', '{public, network:in_addr}',
+          '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}',
+          '{mdns:acceptable}', '{public, location:IOMessage}', '{errno}',
+          '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}',
+          '{mdns:yesno}', '{private, mask.hash, mdnsresponder:mac_addr}', '{sensitive,network:sockaddr}',
+          '{public, location:SqliteResult}', '{public,network:sockaddr}', '{public, location:CLSubHarvesterIdentifier}',
+          '{mdns:rrtype}', '{darwin.errno}', '{bluetooth:OI_STATUS}', '{coreacc:ACCEndpoint_Protocol_t}',
+          '{coreacc:ACCEndpoint_TransportType_t}', '{darwin.mode}', '{public, location:CLDaemonStatus_Type::Reachability}',
+          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}',
+          '{mdns:dns.idflags}', '{public, location:_CLLocationManagerStateTrackerState}',
+          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}',
+          '{mdns:protocol}', '{private, location:CLClientLocation}', '{coreacc:ACCConnection_Type_t}',
+          '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}',
+          '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}',
+          '{bool,public}', '{public,BOOL}', '{public}', '{private}',
+          '{public, network:in6_addr}', '{type:OSLaunchdJobState}'
       ]:
         logger.warning(
             'Custom specifier not supported: {}'.format(custom_specifier))
@@ -206,7 +217,7 @@ class TraceV3FileParser(interface.FileObjectParser,
       if data_type in constants.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES and specifier != 'P':
         raise errors.ParseError('Non-pointer Arbitrary type')
 
-      if specifier in ('d', 'D', 'i', 'u', 'U', 'x', 'X', 'o', 'O'):
+      if specifier in ('d', 'D', 'i', 'u', 'U', 'x', 'X', 'o', 'O', 'm'):
         number = 0
         if data_size == 0 and data_type != constants.FIREHOSE_ITEM_STRING_PRIVATE:
           raise errors.ParseError(
@@ -272,15 +283,23 @@ class TraceV3FileParser(interface.FileObjectParser,
             # Timestamp in seconds ?
             output += dfdatetime_posix_time.PosixTime(
                 timestamp=number).CopyToDateTimeString()
-          elif 'darwin.errno' in custom_specifier:
+          elif 'darwin.errno' in custom_specifier or specifier == 'm':
             output += "[{0:d}: {1:s}]".format(
               number, darwin.DarwinErrorHelper.GetError(number))
+          elif '{darwin.mode}' in custom_specifier:
+            output += stat.filemode(number)
           elif 'odtypes:ODError' in custom_specifier:
             output += opendirectory.ODErrorsHelper.GetError(number)
           elif 'odtypes:mbridtype' in custom_specifier:
             output += opendirectory.ODMBRIdHelper.GetType(number)
           elif 'location:CLClientAuthorizationStatus' in custom_specifier:
             output += location.ClientAuthStatusHelper.GetCode(number)
+          elif 'location:IOMessage' in custom_specifier:
+            output += location.LocationTrackerIOHelper.GetMessage(number)
+          elif 'location:CLDaemonStatus_Type::Reachability' in custom_specifier:
+            output += location.DaemonStatusHelper.GetCode(number)
+          elif 'location:CLSubHarvesterIdentifier' in custom_specifier:
+            output += location.SubharvesterIDHelper.GetCode(number)
           elif 'mdns:addrmv' in custom_specifier:
             if number == 1:
               output += "add"
@@ -503,7 +522,7 @@ class TraceV3FileParser(interface.FileObjectParser,
             raise errors.ParseError(
               'Unknown IP Type: {}'.format(ip_type))
         # Nothing else to go on, so print it in hex
-        elif custom_specifier == '{public}':
+        elif custom_specifier == '{public}' or custom_specifier == '{private}':
           chars = raw_data
           if flags_width_precision.startswith('.'):
             chars = raw_data[:int(flags_width_precision[1:])]
@@ -887,17 +906,21 @@ class TraceV3FileParser(interface.FileObjectParser,
       dsc_file (DSCFile): The DSC file to search.
 
     Returns:
-      str: The format string.
+      Tuple[str, DSCRange]: The format string and the range it was from.
     """
     logger.debug('Extracting format string from shared cache file (DSC)')
 
     if original_offset & 0x80000000:
       return ('%s', dsc.DSCRange())
 
+    format_string = 'Invalid shared cache code pointer offset'
     dsc_range = dsc_file.ReadFormatString(extra_offset)
-    format_string = self._ReadStructureFromByteStream(
-        dsc_range.string[extra_offset - dsc_range.range_offset:], 0,
-        self._GetDataTypeMap('cstring'))
+    if dsc_range:
+      format_string = self._ReadStructureFromByteStream(
+          dsc_range.string[extra_offset - dsc_range.range_offset:], 0,
+          self._GetDataTypeMap('cstring'))
+    else:
+      dsc_range = dsc.DSCRange()
 
     logger.debug('Fmt string: {0:s}'.format(format_string))
     return (format_string, dsc_range)
@@ -1050,6 +1073,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     Raises:
       WrongParser: when the file cannot be parsed.
+      ParseError: if we encounter an unsupported chunk type.
     """
     file_offset = 0
     file_size = file_object.get_size()
@@ -1063,18 +1087,19 @@ class TraceV3FileParser(interface.FileObjectParser,
       if chunk_header.chunk_tag == self._CHUNK_TAG_HEADER:
         logger.debug('Processing a HEADER (0x1000)')
         self._ReadHeader(file_object, file_offset)
-
-      if chunk_header.chunk_tag == self._CHUNK_TAG_CATALOG:
+      elif chunk_header.chunk_tag == self._CHUNK_TAG_CATALOG:
         logger.debug('Processing a CATALOG (0x600B)')
         self.catalog = self._ReadCatalog(parser_mediator, file_object,
                                          file_offset)
         chunkset_index = 0
-
-      if chunk_header.chunk_tag == self._CHUNK_TAG_CHUNKSET:
+      elif chunk_header.chunk_tag == self._CHUNK_TAG_CHUNKSET:
         logger.debug('Processing a CHUNKSET (0x600D)')
         self._ReadChunkSet(parser_mediator, file_object, file_offset,
                            chunk_header, chunkset_index)
         chunkset_index += 1
+      else:
+        raise errors.ParseError(
+          'UNKNOWN CHUNK TAG: {0:d}'.format(chunk_header.chunk_tag))
 
       file_offset += chunk_header.chunk_data_size
 
