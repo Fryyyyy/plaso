@@ -54,3 +54,9 @@ LOG_TYPES = {
   0x41: 'Thread Signpost Start',
   0x42: 'Thread Signpost End',
 }
+
+# MBR Details Types
+USER_TYPES = [0x24, 0xA0, 0xA4]
+UID_TYPES = [0x23, 0xA3]
+GROUP_TYPES = [0x44]
+GID_TYPES = [0xC3]

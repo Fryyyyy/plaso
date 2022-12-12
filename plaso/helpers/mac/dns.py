@@ -1,11 +1,21 @@
 # -*- coding: utf-8 -*-
 """Mac DNS data helper."""
 
-class DNS(object):
+import ipaddress
+import os
+
+from plaso.lib import dtfabric_helper
+from plaso.lib import errors
+
+
+class DNS(dtfabric_helper.DtFabricHelper):
   """DNS Parser.
 
   See https://github.com/apple-oss-distributions/mDNSResponder
   """
+
+  _DEFINITION_FILE = os.path.join(
+      os.path.dirname(__file__), 'dns.yaml')
 
   # Query Response
   QR = 0x8000
@@ -175,3 +185,78 @@ class DNS(object):
       str: DNS reason type
     """
     return cls._DNS_REASONS.get(reason_type, str(reason_type))
+
+  def ParseDNSHeader(self, data):
+    """Parses given data as a DNS Header chunk
+
+    Args:
+      data (bytes): Raw data
+
+    Returns:
+      str: The formatted DNS ID, Flags and Counts
+
+    Raises:
+      ParseError: if the data cannot be parsed.
+    """
+    dnsheader = self._ReadStructureFromByteStream(
+        data, 0, self._GetDataTypeMap('dns_header'))
+    flag_string = self.ParseFlags(dnsheader.flags)
+    return ('id: {0:s} ({1:d}), flags: 0x{2:04x} ({3:s}), counts: '
+            '{4:d}/{5:d}/{6:d}/{7:d}').format(
+        hex(dnsheader.id), dnsheader.id, dnsheader.flags, flag_string,
+        dnsheader.questions, dnsheader.answers,
+        dnsheader.authority_records, dnsheader.additional_records)
+
+  def ParseDNSSVCB(self, data):
+    """Parses given data as a DNS SVCB chunk
+
+    Args:
+      data (bytes): Raw data
+
+    Returns:
+      str: The formatted SCVB string
+
+    Raises:
+      ParseError: if the data cannot be parsed.
+    """
+    dns_svcb = self._ReadStructureFromByteStream(
+        data, 0, self._GetDataTypeMap('dns_svcb'))
+    if dns_svcb.url:
+      return dns_svcb.url
+
+    rets = []
+    offset = 0
+
+    if dns_svcb.apln_data:
+      alpns = []
+      while offset < dns_svcb.alpn_total_size:
+        alpn_data = self._ReadStructureFromByteStream(
+          dns_svcb.apln_data[offset:], offset, self._GetDataTypeMap('dns_svcb_alpn'))
+        offset += 1 + alpn_data.entry_size
+        alpns.append(alpn_data.data)
+
+    if alpns:
+      rets.append('alpn="{0:s}"'.format(",".join(alpns)))
+
+    offset += 7
+    ipv4s = []
+    ipv6s = []
+    while offset < len(data):
+      ip_hint = self._ReadStructureFromByteStream(
+          data[offset:], offset, self._GetDataTypeMap('dns_svcb_ip_hints'))
+      offset += 4
+
+      if ip_hint.ipv4s:
+        for ip_addr in ip_hint.ipv4s:
+          ipv4s.append(self._FormatPackedIPv4Address(ip_addr.segments))
+          offset += 4
+      if ip_hint.ipv6s:
+        for ip_addr in ip_hint.ipv6s:
+          ipv6s.append(ipaddress.ip_address(ip_addr.ip).compressed)
+          offset += 16
+
+    if ipv4s:
+      rets.append('ipv4hint="{0:s}"'.format(','.join(ipv4s)))
+    if ipv6s:
+      rets.append('ipv6hint="{0:s}"'.format(','.join(ipv6s)))
+    return " ".join(rets)

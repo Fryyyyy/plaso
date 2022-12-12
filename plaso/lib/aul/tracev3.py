@@ -172,14 +172,14 @@ class TraceV3FileParser(interface.FileObjectParser,
           '{public, location:SqliteResult}', '{public,network:sockaddr}', '{public, location:CLSubHarvesterIdentifier}',
           '{mdns:rrtype}', '{darwin.errno}', '{bluetooth:OI_STATUS}', '{coreacc:ACCEndpoint_Protocol_t}',
           '{coreacc:ACCEndpoint_TransportType_t}', '{darwin.mode}', '{public, location:CLDaemonStatus_Type::Reachability}',
-          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}',
+          '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{public, location:_CLClientManagerStateTrackerState}',
           '{mdns:dns.idflags}', '{public, location:_CLLocationManagerStateTrackerState}',
           '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}',
           '{mdns:protocol}', '{private, location:CLClientLocation}', '{coreacc:ACCConnection_Type_t}',
           '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}',
           '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}',
-          '{bool,public}', '{public,BOOL}', '{public}', '{private}',
-          '{public, network:in6_addr}', '{type:OSLaunchdJobState}'
+          '{bool,public}', '{public,BOOL}', '{public}', '{private}', '{audio:4CC}', '{private, mask.hash, network:in6_addr}',
+          '{public, network:in6_addr}', '{type:OSLaunchdJobState}', '{private, mask.hash, mdns:rd.svcb}'
       ]:
         logger.warning(
             'Custom specifier not supported: {}'.format(custom_specifier))
@@ -201,11 +201,12 @@ class TraceV3FileParser(interface.FileObjectParser,
         i += 1
         continue
 
-      if (data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]
+      if ((data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]
          ) and len(raw_data) == 0 and (
              data_size == 0 or
              (data_type == constants.FIREHOSE_ITEM_STRING_PRIVATE and
-              data_size == 0x8000)):
+              data_size == 0x8000))) or (
+            data_type == constants.FIREHOSE_ITEM_SENSITIVE and custom_specifier == '{sensitive}'):
         output += '<private>'
         i += 1
         continue
@@ -287,7 +288,8 @@ class TraceV3FileParser(interface.FileObjectParser,
             output += "[{0:d}: {1:s}]".format(
               number, darwin.DarwinErrorHelper.GetError(number))
           elif '{darwin.mode}' in custom_specifier:
-            output += stat.filemode(number)
+            output += "{0:s} ({1:s})".format(
+              oct(number).replace('o', ''), stat.filemode(number))
           elif 'odtypes:ODError' in custom_specifier:
             output += opendirectory.ODErrorsHelper.GetError(number)
           elif 'odtypes:mbridtype' in custom_specifier:
@@ -398,6 +400,8 @@ class TraceV3FileParser(interface.FileObjectParser,
             chars = chars.decode('utf-8').rstrip('\x00')
           if '*' in flags_width_precision:
             flags_width_precision = ''
+          if flags_width_precision == '.':
+            flags_width_precision = ''
           old = ('%' + flags_width_precision + specifier) % chars
           if flags_width_precision.isdigit():
             flags_width_precision = '>' + flags_width_precision
@@ -429,20 +433,21 @@ class TraceV3FileParser(interface.FileObjectParser,
                                                      uuid_data_type_map)
             chars = str(uuid).upper()
         elif 'odtypes:mbr_details' in custom_specifier:
-          if raw_data[0] == 0x44 or raw_data[0] == 0x24:  # Group or Alias(?)
-            group_type = self._ReadStructureFromByteStream(
-                raw_data[1:], 1, self._GetDataTypeMap('mbr_group_type'))
+          if raw_data[0] in constants.USER_TYPES + constants.GROUP_TYPES:
+            user_group_type = self._ReadStructureFromByteStream(
+                raw_data[1:], 1, self._GetDataTypeMap('mbr_user_group_type'))
             mbr_type = 'group'
-            if raw_data[0] == 0x24:
+            if raw_data[0] in constants.USER_TYPES:
               mbr_type = 'user'
-            chars = '{0:s}: {1:s}@{2:s}'.format(mbr_type, group_type.name,
-                                                group_type.domain)
-          elif raw_data[0] == 0x23:  # User
-            uid = self._ReadStructureFromByteStream(raw_data[1:], 1,
-                                                    uint32_data_type_map)
-            domain = self._ReadStructureFromByteStream(raw_data[5:], 5,
-                                                       string_data_type_map)
-            chars = 'user: {0:s}@{1:s}'.format(uid, domain)
+            chars = '{0:s}: {1:s}@{2:s}'.format(mbr_type, user_group_type.name,
+                                                (user_group_type.domain or '<not found>'))
+          elif raw_data[0] in constants.UID_TYPES + constants.GID_TYPES:
+            uid_gid_type = self._ReadStructureFromByteStream(
+                raw_data[1:], 1, self._GetDataTypeMap('mbr_uid_gid_type'))
+            mbr_type = 'group'
+            if raw_data[0] in constants.UID_TYPES:
+              mbr_type = 'user'
+            chars = '{0:s}: {1:d}@{2:s}'.format(mbr_type, uid_gid_type.uid, (uid_gid_type.domain or '<not found>'))
           else:
             raise errors.ParseError(
                 'Unknown MBR Details Header Byte: 0x{0:X}'.format(raw_data[0]))
@@ -460,9 +465,10 @@ class TraceV3FileParser(interface.FileObjectParser,
             if raw_data[8:24] == b'\x00' * 16:
               chars = 'IN6ADDR_ANY'
             else:
-              chars = ipaddress.ip_address(
-                  self._FormatPackedIPv6Address(
-                      sockaddr.ipv6_ip.segments)).compressed
+              try:
+                chars = ipaddress.ip_address(sockaddr.ipv6_ip.ip).compressed
+              except ValueError:
+                pass
           # IPv4
           elif sockaddr.family == 0x02:
             chars = self._FormatPackedIPv4Address(
@@ -491,36 +497,34 @@ class TraceV3FileParser(interface.FileObjectParser,
               **state_tracker_structure,
               **extra_state_tracker_structure
           })
+        elif 'location:_CLClientManagerStateTrackerState' in custom_specifier:
+          chars = str(location.LocationClientStateTrackerParser().Parse(raw_data))
+        elif 'mdns:dnshdr' in custom_specifier:
+          dns_parser = dns.DNS()
+          chars = dns_parser.ParseDNSHeader(raw_data)
+        elif 'mdns:rd.svcb' in custom_specifier:
+          dns_parser = dns.DNS()
+          chars = dns_parser.ParseDNSSVCB(raw_data)
         elif 'mdnsresponder:domain_name' in custom_specifier:
           chars = ''.join([
               '.' if not chr(s).isprintable() else chr(s)
               for s in raw_data.replace(b'\n', b'').replace(b'\t', b'').replace(
                   b'\r', b'')
           ])
-        elif 'mdns:dnshdr' in custom_specifier:
-          dnsheader = self._ReadStructureFromByteStream(
-              raw_data, 0, self._GetDataTypeMap('dns_header'))
-          flag_string = dns.DNS.ParseFlags(dnsheader.flags)
-          chars = ('id: {0:s} ({1:d}), flags: 0x{2:04x} ({3:s}), counts: '
-                   '{4:d}/{5:d}/{6:d}/{7:d}').format(
-              hex(dnsheader.id), dnsheader.id, dnsheader.flags, flag_string,
-              dnsheader.questions, dnsheader.answers,
-              dnsheader.authority_records, dnsheader.additional_records)
         elif 'mdnsresponder:ip_addr' in custom_specifier:
-          ip_type = self._ReadStructureFromByteStream(raw_data[0], 0,
+          ip_type = self._ReadStructureFromByteStream(raw_data[0:], 0,
             uint32_data_type_map)
           if ip_type == 4:
             ip_addr = self._ReadStructureFromByteStream(
-              raw_data[1:], 1, self._GetDataTypeMap('ipv4_address'))
+              raw_data[4:], 4, self._GetDataTypeMap('ipv4_address'))
             chars = self._FormatPackedIPv4Address(ip_addr.segments)
           elif ip_type == 6:
-            ip_addr = self._ReadStructureFromByteStream(
-              raw_data, 0, self._GetDataTypeMap('ipv6_address'))
-            chars = ipaddress.ip_address(
-                self._FormatPackedIPv6Address(ip_addr.segments)).compressed
+            chars = ipaddress.ip_address(raw_data[4:]).compressed
           else:
             raise errors.ParseError(
               'Unknown IP Type: {}'.format(ip_type))
+        elif 'mdnsresponder:mac_addr' in custom_specifier:
+          chars = ':'.join('%02x' % b for b in raw_data)
         # Nothing else to go on, so print it in hex
         elif custom_specifier == '{public}' or custom_specifier == '{private}':
           chars = raw_data
@@ -934,7 +938,7 @@ class TraceV3FileParser(interface.FileObjectParser,
           data[offset:], offset,
           self._GetDataTypeMap('tracev3_firehose_tracepoint_data_item'))
       offset += 2 + data_item.item_size
-      logger.debug('Item data: Type {0:d}'.format(data_item.item_type))
+      logger.debug('Item data: Type {0:d} // Size {1:d}'.format(data_item.item_type, data_item.item_size))
       if data_item.item_type in constants.FIREHOSE_ITEM_NUMBER_TYPES:
         logger.debug('Number: {0!s}'.format(data_item.item))
         log_data.append(
@@ -953,8 +957,11 @@ class TraceV3FileParser(interface.FileObjectParser,
       elif data_item.item_type in constants.FIREHOSE_ITEM_PRECISION_TYPES:
         pass
       elif data_item.item_type == constants.FIREHOSE_ITEM_SENSITIVE:
-        raise errors.ParseError(
-            'Sensitive types not supported -- firehose_log.rs:764')
+        log_data.append(
+            (data_item.item_type, data_item.item_size, data_item.item))
+        index += 1
+        #raise errors.ParseError(
+        #    'Sensitive types not supported -- firehose_log.rs:764')
       else:
         raise errors.ParseError('Unsupported data type ??')
     return (log_data, deferred_data_items, offset)

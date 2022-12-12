@@ -27,14 +27,6 @@ attributes:
   false_value: false
   true_value: true
 ---
-name: bool32
-type: boolean
-attributes:
-  size: 4
-  units: bytes
-  false_value: false
-  true_value: true
----
 name: uint32
 type: integer
 attributes:
@@ -153,14 +145,3 @@ members:
   data_type: bool8
 - name: restricted
   data_type: bool8
----
-name: location_tracker_client_data
-type: structure
-description: Custom Statedump CLClientManagerStateTracker data
-attributes:
-  byte_order: little-endian
-members:
-- name: location_enabled
-  data_type: bool32
-- name: location_restricted
-  data_type: bool32

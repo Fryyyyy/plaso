@@ -35,19 +35,19 @@ class SimpledumpParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the records cannot be parsed.
     """
-    logger.info("Reading Statedump")
+    logger.debug("Reading Statedump")
     data_type_map = self._GetDataTypeMap('tracev3_simpledump')
 
     simpledump_structure = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
-    logger.info(
+    logger.debug(
         ("Simpledump data: ProcID 1 {0:d} // ProcID 2 {1:d} // "
         "CT {2:d} // ThreadID {3:d}")
         .format(simpledump_structure.first_number_proc_id,
                 simpledump_structure.second_number_proc_id,
                 simpledump_structure.continuous_time,
                 simpledump_structure.thread_id))
-    logger.info('Substring: {0:s} // Message string: {1:s}'.format(
+    logger.debug('Substring: {0:s} // Message string: {1:s}'.format(
         simpledump_structure.subsystem_string,
         simpledump_structure.message_string
     ))
@@ -62,7 +62,7 @@ class SimpledumpParser(dtfabric_helper.DtFabricHelper):
     event_data.library_uuid = simpledump_structure.sender_uuid.hex
     event_data.process_uuid = simpledump_structure.dsc_uuid.hex
     event_data.message = simpledump_structure.message_string
-    logger.info("Log line: {0!s}".format(event_data.message))
+    logger.debug("Log line: {0!s}".format(event_data.message))
 
     ct = simpledump_structure.continuous_time
     ts = aul_time.FindClosestTimesyncItemInList(

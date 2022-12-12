@@ -38,7 +38,7 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the non-activity chunk cannot be parsed.
     """
-    logger.info("Parsing Signpost")
+    logger.debug("Parsing Signpost")
 
     log_data = []
     offset = 0
@@ -67,64 +67,64 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
     except IndexError:
       uuid_file = None
 
-    uint8_data_type_map = self._GetDataTypeMap("uint8")
-    uint16_data_type_map = self._GetDataTypeMap("uint16")
-    uint32_data_type_map = self._GetDataTypeMap("uint32")
-    uint64_data_type_map = self._GetDataTypeMap("uint64")
+    uint8_data_type_map = tracev3.GetDataTypeMap("uint8")
+    uint16_data_type_map = tracev3.GetDataTypeMap("uint16")
+    uint32_data_type_map = tracev3.GetDataTypeMap("uint32")
+    uint64_data_type_map = tracev3.GetDataTypeMap("uint64")
 
     if flags & constants.CURRENT_AID:
-      logger.info("Signpost has current_aid")
-      activity_id = self._ReadStructureFromByteStream(data, offset,
+      logger.debug("Signpost has current_aid")
+      activity_id = tracev3.ReadStructureFromByteStream(data, offset,
                                                       uint32_data_type_map)
       offset += 4
-      sentinel = self._ReadStructureFromByteStream(data[offset:], offset,
+      sentinel = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                    uint32_data_type_map)
       offset += 4
 
     if flags & constants.PRIVATE_STRING_RANGE:
-      logger.info("Signpost has private_string_range (has_private_data flag)")
+      logger.debug("Signpost has private_string_range (has_private_data flag)")
 
-      private_strings_offset = self._ReadStructureFromByteStream(
+      private_strings_offset = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
-      private_strings_size = self._ReadStructureFromByteStream(
+      private_strings_size = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
 
-    message_string_reference = self._ReadStructureFromByteStream(
+    message_string_reference = tracev3.ReadStructureFromByteStream(
         data[offset:], offset, uint32_data_type_map)
     offset += 4
-    logger.info("Unknown PCID: {0:d}".format(message_string_reference))
+    logger.debug("Unknown PCID: {0:d}".format(message_string_reference))
 
     ffh = formatter.FormatterFlagsHelper()
-    formatter_flags = ffh.FormatFlags(self, flags, data, offset)
+    formatter_flags = ffh.FormatFlags(tracev3, flags, data, offset)
     offset = formatter_flags.offset
 
     subsystem_value = ""
     if flags & constants.HAS_SUBSYSTEM:
-      subsystem_value = self._ReadStructureFromByteStream(
+      subsystem_value = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.info("Signpost has subsystem: {0:d}".format(subsystem_value))
+      logger.debug("Signpost has subsystem: {0:d}".format(subsystem_value))
 
-    signpost_id = self._ReadStructureFromByteStream(data[offset:], offset,
+    signpost_id = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                     uint64_data_type_map)
     offset += 8
 
     if flags & constants.HAS_TTL:
-      ttl_value = self._ReadStructureFromByteStream(data[offset:], offset,
+      ttl_value = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                     uint8_data_type_map)
       offset += 1
-      logger.info("Signpost has TTL: {0:d}".format(ttl_value))
+      logger.debug("Signpost has TTL: {0:d}".format(ttl_value))
 
     if flags & constants.HAS_DATA_REF:
-      data_ref_id = self._ReadStructureFromByteStream(data[offset:], offset,
+      data_ref_id = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                       uint16_data_type_map)
       offset += 1
-      logger.info("Signpost with data reference: {0:d}".format(data_ref_id))
+      logger.debug("Signpost with data reference: {0:d}".format(data_ref_id))
 
     if flags & constants.HAS_SIGNPOST_NAME:
-      signpost_name = self._ReadStructureFromByteStream(data[offset:], offset,
+      signpost_name = tracev3.ReadStructureFromByteStream(data[offset:], offset,
                                                         uint32_data_type_map)
       offset += 4
       if formatter_flags.large_shared_cache != 0:
@@ -140,12 +140,12 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
       else:
         raise errors.ParseError("Private strings wanted but not supplied")
 
-    data_meta = self._ReadStructureFromByteStream(
+    data_meta = tracev3.ReadStructureFromByteStream(
         data[offset:], offset,
-        self._GetDataTypeMap("tracev3_firehose_tracepoint_data"))
+        tracev3.GetDataTypeMap("tracev3_firehose_tracepoint_data"))
     offset += 2
 
-    logger.info(
+    logger.debug(
         "After activity data: Unknown {0:d} // Number of Items {1:d}".format(
             data_meta.unknown1, data_meta.num_items))
     (log_data, deferred_data_items,
@@ -161,9 +161,9 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
         if not private_string:
           raise errors.ParseError("Trying to read from empty Private String")
         try:
-          result = self._ReadStructureFromByteStream(
-              private_string[item[1]:], 0, self._GetDataTypeMap("cstring"))
-          logger.info("End result: {0:s}".format(result))
+          result = tracev3.ReadStructureFromByteStream(
+              private_string[item[1]:], 0, tracev3.GetDataTypeMap("cstring"))
+          logger.debug("End result: {0:s}".format(result))
         except errors.ParseError:
           result = ""  # Private
       else:
@@ -173,9 +173,9 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
           result = base64.encodebytes(data[offset + item[1]:offset + item[1] +
                                            item[2]]).strip()
         else:
-          result = self._ReadStructureFromByteStream(
-              data[offset + item[1]:], 0, self._GetDataTypeMap("cstring"))
-          logger.info("End result: {0:s}".format(result))
+          result = tracev3.ReadStructureFromByteStream(
+              data[offset + item[1]:], 0, tracev3.GetDataTypeMap("cstring"))
+          logger.debug("End result: {0:s}".format(result))
       log_data.insert(item[3], (item[0], item[2], result))
 
     found = False
@@ -188,7 +188,7 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
           found = True
           break
       if not found:
-        logger.info(
+        logger.debug(
             "Did not find any oversize log entries from Data Ref ID: "
             "{0:d}, First Proc ID: {1:d}, and Second Proc ID: {2:d}"
             .format(data_ref_id, proc_info.first_number_proc_id,

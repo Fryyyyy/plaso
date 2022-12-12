@@ -44,12 +44,12 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the records cannot be parsed.
     """
-    logger.info("Reading Statedump")
+    logger.debug("Reading Statedump")
     data_type_map = self._GetDataTypeMap('tracev3_statedump')
 
     statedump_structure = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
-    logger.info(
+    logger.debug(
         ("Statedump data: ProcID 1 {0:d} // ProcID 2 {1:d} // "
         "TTL {2:d} // CT {3:d} // String Name {4:s}")
         .format(statedump_structure.first_number_proc_id,
@@ -125,9 +125,7 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
           else:
             state_tracker_structure['charger_type'] = "Unknown"
         elif statedump_structure.string_name == "CLClientManagerStateTracker":
-          state_tracker_structure = self._ReadStructureFromByteStream(
-              statedump_structure.data, 0,
-              self._GetDataTypeMap('location_tracker_client_data')).__dict__
+          state_tracker_structure = location.LocationClientStateTrackerParser().Parse(statedump_structure.data)
         elif statedump_structure.string_name == "CLLocationManagerStateTracker":
           state_tracker_structure, extra_state_tracker_structure = location.LocationManagerStateTrackerParser().Parse(statedump_structure.data_size, statedump_structure.data)
         else:
@@ -148,7 +146,7 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
 
     event_data.activity_id = hex(statedump_structure.activity_id)
     event_data.pid = statedump_structure.first_number_proc_id
-    logger.info("Log line: {0!s}".format(event_data.message))
+    logger.debug("Log line: {0!s}".format(event_data.message))
 
     with open('/tmp/fryoutput.csv', 'a') as f:
       csv.writer(f).writerow([

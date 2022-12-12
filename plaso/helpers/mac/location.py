@@ -76,6 +76,28 @@ class SubharvesterIDHelper(object):
     return cls._SUBHARVESTER_ID.get(subharvester_id, str(subharvester_id))
 
 
+class LocationClientStateTrackerParser(dtfabric_helper.DtFabricHelper):
+  """LocationClientStateTracker data chunk parser"""
+
+  _DEFINITION_FILE = os.path.join(
+      os.path.dirname(__file__), 'location.yaml')
+
+  def Parse(self, data):
+    """Parses given data of a given size as a LocationClientStateTracker chunk
+
+    Args:
+      data (bytes): Raw data
+
+    Returns:
+      Dict: The state tracker data
+
+    Raises:
+      ParseError: if the data cannot be parsed.
+    """
+    return self._ReadStructureFromByteStream(
+      data, 0, self._GetDataTypeMap('location_tracker_client_data')).__dict__
+
+
 class LocationManagerStateTrackerParser(dtfabric_helper.DtFabricHelper):
   """LocationManagerStateTracker data chunk parser"""
 

@@ -308,7 +308,7 @@ class NonactivityParser():
     if dsc_range.uuid or uuid_file:
       event_data.library_uuid = dsc_range.uuid.hex if dsc_range.uuid else uuid_file.uuid
 
-    logger.info("Log line: {0!s}".format(event_data.message))
+    logger.debug("Log line: {0!s}".format(event_data.message))
     with open("/tmp/fryoutput.csv", "a") as f:
       csv.writer(f).writerow([
           dfdatetime_apfs_time.APFSTime(timestamp=time).CopyToDateTimeString(),

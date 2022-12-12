@@ -33,12 +33,12 @@ class LossParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the non-activity chunk cannot be parsed.
     """
-    logger.info("Reading Loss")
+    logger.debug("Reading Loss")
     data_type_map = self._GetDataTypeMap('tracev3_firehose_loss')
 
     loss_structure = self._ReadStructureFromByteStream(
         tracepoint.data, 0, data_type_map)
-    logger.info("Loss data: Start Time {0:d} // End time {1:d} "
+    logger.debug("Loss data: Start Time {0:d} // End time {1:d} "
       "// Count {2:d}".format(
       loss_structure.start_time, loss_structure.end_time, loss_structure.count
     ))

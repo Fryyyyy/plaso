@@ -59,47 +59,47 @@ class FormatterFlagsHelper():
       ret.large_offset_data = tracev3.ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.info('Has large offset: {0:d}'.format(ret.large_offset_data))
+      logger.debug('Has large offset: {0:d}'.format(ret.large_offset_data))
       if flags & self._HAS_LARGE_SHARED_CACHE:
         ret.large_shared_cache = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.info(
+        logger.debug(
           'Has large shared cache: {0:d}'.format(ret.large_shared_cache))
     elif flags & self._FLAG_CHECK == self._HAS_LARGE_SHARED_CACHE:
       if flags & self._HAS_LARGE_OFFSET:
         ret.large_offset_data = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.info('Has large offset: {0:d}'.format(ret.large_offset_data))
+        logger.debug('Has large offset: {0:d}'.format(ret.large_offset_data))
       ret.large_shared_cache = tracev3.ReadStructureFromByteStream(
         data[offset:], offset, uint16_data_type_map)
       offset += 2
-      logger.info(
+      logger.debug(
         'Has large shared cache: {0:d}'.format(ret.large_shared_cache))
     elif flags & self._FLAG_CHECK == self._HAS_ABSOLUTE:
-      logger.info('Absolute')
+      logger.debug('Absolute')
       ret.absolute = True
       if flags & self._HAS_FMT_IN_UUID == 0:
-        logger.info('Alt index')
+        logger.debug('Alt index')
         ret.uuid_file_index = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
     elif flags & self._FLAG_CHECK == self._HAS_FMT_IN_UUID:
-      logger.info('main_exe') #TODO(fryy): Remove
+      logger.debug('main_exe') #TODO(fryy): Remove
     elif flags & self._FLAG_CHECK == self._HAS_SHARED_CACHE:
-      logger.info('shared_cache')
+      logger.debug('shared_cache')
       ret.shared_cache = True
       if flags & self._HAS_LARGE_OFFSET:
         ret.large_offset_data = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, uint16_data_type_map)
         offset += 2
-        logger.info('Has large offset: {0:d}'.format(ret.large_offset_data))
+        logger.debug('Has large offset: {0:d}'.format(ret.large_offset_data))
     elif flags & self._FLAG_CHECK == self._HAS_UUID_RELATIVE:
       ret.uuid_relative = tracev3.ReadStructureFromByteStream(
           data[offset:], offset, tracev3.GetDataTypeMap('uuid_be'))
       offset += 16
-      logger.info('uuid_relative: {0:s}'.format(ret.uuid_relative.hex))
+      logger.debug('uuid_relative: {0:s}'.format(ret.uuid_relative.hex))
     else:
       raise errors.ParseError('Unknown formatter flag')
 

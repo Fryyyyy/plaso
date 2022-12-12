@@ -44,12 +44,12 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
     Raises:
       ParseError: if the oversize chunk cannot be parsed.
     """
-    logger.info("Reading Oversize")
+    logger.debug("Reading Oversize")
     data_type_map = self._GetDataTypeMap('tracev3_oversize')
 
     oversize = self._ReadStructureFromByteStream(
         chunk_data, data_offset, data_type_map)
-    logger.info(
+    logger.debug(
       'Firehose Header data: ProcID 1 {0:d} // ProcID 2 {1:d} // '
       'Ref Index {2:d} // CT {3:d} (Oversize)'
       .format(oversize.first_number_proc_id, oversize.second_number_proc_id,
@@ -62,7 +62,7 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
       self._GetDataTypeMap('tracev3_firehose_tracepoint_data'))
     offset += 2
 
-    logger.info(
+    logger.debug(
       "After activity data: Unknown {0:d} // Number of Items {1:d}".format(
         data_meta.unknown1, data_meta.num_items))
     (oversize_strings, deferred_data_items,
@@ -80,8 +80,9 @@ class OversizeParser(dtfabric_helper.DtFabricHelper):
         oversize_strings.append((item[0], item[2], ""))
         continue
       if item[0] in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES:
+        logger.debug("Private Oversize")
         private_items.append((item, index))
-        oversize_strings.append((item[0], item[2], '<private>'))
+        oversize_strings.insert(index, (item[0], item[2], '<private>'))
         continue
       oversize_strings.append(
           (item[0], item[2],
