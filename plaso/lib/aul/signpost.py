@@ -204,8 +204,14 @@ class SignpostParser(dtfabric_helper.DtFabricHelper):
           dsc_file)
     else:
       if formatter_flags.absolute:
-        raise errors.ParseError(
-            "Absolute Signpost not supported - signpost.rs:224")
+        uuid_file = tracev3.ExtractAbsoluteStrings(
+            tracepoint.format_string_location, formatter_flags.uuid_file_index,
+            proc_info, message_string_reference)
+        if uuid_file != '%s':
+          fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+        else:
+          fmt = uuid_file
+          uuid_file = None
       elif formatter_flags.uuid_relative:
         uuid_file = tracev3.ExtractAltUUID(formatter_flags.uuid_relative)
         fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)

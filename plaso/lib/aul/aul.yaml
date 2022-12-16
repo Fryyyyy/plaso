@@ -33,6 +33,13 @@ attributes:
   size: 2
   units: bytes
 ---
+name: int16
+type: integer
+attributes:
+  format: signed
+  size: 2
+  units: bytes
+---
 name: uint16be
 type: integer
 attributes:

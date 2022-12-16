@@ -5,7 +5,6 @@ import ipaddress
 import os
 
 from plaso.lib import dtfabric_helper
-from plaso.lib import errors
 
 
 class DNS(dtfabric_helper.DtFabricHelper):
@@ -137,7 +136,7 @@ class DNS(dtfabric_helper.DtFabricHelper):
       flags (int): DNS flags
 
     Returns:
-      str: formatted log message.
+      str: formatted string.
     """
     enabled_flags = []
     for (flag, value) in cls._DNS_FLAGS:

@@ -16,6 +16,7 @@ from plaso.helpers.mac import darwin
 from plaso.helpers.mac import dns
 from plaso.helpers.mac import location
 from plaso.helpers.mac import opendirectory
+from plaso.helpers.mac import tcp
 from plaso.helpers import sqlite
 
 from plaso.lib.aul import activity
@@ -27,6 +28,7 @@ from plaso.lib.aul import oversize
 from plaso.lib.aul import signpost
 from plaso.lib.aul import simpledump
 from plaso.lib.aul import statedump
+from plaso.lib.aul import trace
 from plaso.lib.aul import time as aul_time
 
 from plaso.lib import dtfabric_helper
@@ -99,10 +101,10 @@ class TraceV3FileParser(interface.FileObjectParser,
         return ''
       return data[0][2]
 
-    string_data_type_map = self._GetDataTypeMap('cstring')
     uuid_data_type_map = self._GetDataTypeMap('uuid_be')
     int8_data_type_map = self._GetDataTypeMap('char')
     uint8_data_type_map = self._GetDataTypeMap('uint8')
+    int16_data_type_map = self._GetDataTypeMap('int16')
     uint16_data_type_map = self._GetDataTypeMap('uint16')
     int32_data_type_map = self._GetDataTypeMap('int32')
     uint32_data_type_map = self._GetDataTypeMap('uint32')
@@ -161,12 +163,12 @@ class TraceV3FileParser(interface.FileObjectParser,
 
       #TODO(fryy): Remove
       if custom_specifier and 'signpost' not in custom_specifier and 'name' not in custom_specifier and custom_specifier not in [
-          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}',
+          '{private, mask.hash, network:in_addr}', '{public,mdns:dnshdr}', '{private,network:tcp_packets}',
           '{mdns:dns.counts}', '{mdns:gaiopts}', '{private,bluetooth:BD_ADDR}',
-          '{private, mask.hash}', 'mdns:dns.counts', '{mdns:nreason}',
+          '{private, mask.hash}', 'mdns:dns.counts', '{mdns:nreason}', '{sensitive, mask.hash}',
           '{private,mask.hash}', '{sensitive}', '{public, network:in_addr}',
           '{public, location:CLClientAuthorizationStatus}', '{odtypes:ODError}',
-          '{mdns:acceptable}', '{public, location:IOMessage}', '{errno}',
+          '{mdns:acceptable}', '{public, location:IOMessage}', '{errno}', '{private, location:CLSubHarvesterIdentifier}',
           '{odtypes:mbridtype}', '{PUBLIC}', '{public, name=transaction_seed}',
           '{mdns:yesno}', '{private, mask.hash, mdnsresponder:mac_addr}', '{sensitive,network:sockaddr}',
           '{public, location:SqliteResult}', '{public,network:sockaddr}', '{public, location:CLSubHarvesterIdentifier}',
@@ -174,10 +176,10 @@ class TraceV3FileParser(interface.FileObjectParser,
           '{coreacc:ACCEndpoint_TransportType_t}', '{darwin.mode}', '{public, location:CLDaemonStatus_Type::Reachability}',
           '{public,odtypes:nt_sid_t}', '{public,odtypes:mbr_details}', '{public, location:_CLClientManagerStateTrackerState}',
           '{mdns:dns.idflags}', '{public, location:_CLLocationManagerStateTrackerState}',
-          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}',
+          '{uuid_t}', '{public,uuid_t}', '{public, location:escape_only}', '{network:tcp_state}',
           '{mdns:protocol}', '{private, location:CLClientLocation}', '{coreacc:ACCConnection_Type_t}',
           '{private, location:escape_only}', '{time_t}', '{bool}', '{BOOL}',
-          '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}',
+          '{mdns:addrmv}', '{private, mask.hash, mdnsresponder:ip_addr}', '{network:tcp_flags}',
           '{bool,public}', '{public,BOOL}', '{public}', '{private}', '{audio:4CC}', '{private, mask.hash, network:in6_addr}',
           '{public, network:in6_addr}', '{type:OSLaunchdJobState}', '{private, mask.hash, mdns:rd.svcb}'
       ]:
@@ -201,7 +203,7 @@ class TraceV3FileParser(interface.FileObjectParser,
         i += 1
         continue
 
-      if ((data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]
+      if ((data_type in constants.FIREHOSE_ITEM_PRIVATE_STRING_TYPES + constants.FIREHOSE_ITEM_STRING_ARBITRARY_DATA_TYPES + [constants.FIREHOSE_ITEM_STRING_PRIVATE]
          ) and len(raw_data) == 0 and (
              data_size == 0 or
              (data_type == constants.FIREHOSE_ITEM_STRING_PRIVATE and
@@ -231,6 +233,8 @@ class TraceV3FileParser(interface.FileObjectParser,
             specifier = 'd'
             if data_size == 1:
               data_map = int8_data_type_map
+            elif data_size == 2:
+              data_map = int16_data_type_map
             elif data_size == 4:
               data_map = int32_data_type_map
             elif data_size == 8:
@@ -242,6 +246,8 @@ class TraceV3FileParser(interface.FileObjectParser,
           else:
             if data_size == 1:
               data_map = uint8_data_type_map
+            elif data_size == 2:
+              data_map = uint16_data_type_map
             elif data_size == 4:
               data_map = uint32_data_type_map
             elif data_size == 8:
@@ -350,6 +356,10 @@ class TraceV3FileParser(interface.FileObjectParser,
               logger.warning(
                 'Unknown DNS option: {0:d}'.format(number))
               output += hex(number)
+          elif '{network:tcp_flags}' in custom_specifier:
+            output += tcp.TCP.ParseFlags(number)
+          elif '{network:tcp_state}' in custom_specifier:
+            output += tcp.TCP.ParseState(number)
           else:
             try:
               output += format_code.format(number)
@@ -544,7 +554,9 @@ class TraceV3FileParser(interface.FileObjectParser,
                 'Size 0 in pointer fmt {0:s} // data {1!s}'.format(
                     format_string, data_item))
         else:
-          if data_size == 4:
+          if data_size == 2:
+            data_map = uint16_data_type_map
+          elif data_size == 4:
             data_map = uint32_data_type_map
           elif data_size == 8:
             data_map = uint64_data_type_map
@@ -651,9 +663,11 @@ class TraceV3FileParser(interface.FileObjectParser,
       if not found:
         found = self.uuid_parser.FindFile(parser_mediator, filename)
         if not found:
-          raise errors.ParseError(
+          logger.error(
               'Neither UUID nor DSC file found for UUID: {0:s}'.format(
                   uuid.hex))
+          catalog.files.append(None)
+          continue
         else:
           if not found_in_cache:
             self.catalog_files.append(found)
@@ -845,16 +859,16 @@ class TraceV3FileParser(interface.FileObjectParser,
       uuid (str): Requested UUID.
 
     Returns:
-      UUIDText object.
+      UUIDText object or None.
 
     Raises:
       ParseError: if the requested UUID file was not found.
     """
     uuid_file = [f for f in self.catalog_files if f.uuid == uuid.hex.upper()]
     if len(uuid_file) != 1:
-      raise errors.ParseError('Couldn\'t find UUID file for {0:s}'.format(
+      logger.error('Couldn\'t find UUID file for {0:s}'.format(
           uuid.hex))
-      # return 'UNKNOWN'
+      return None
     return uuid_file[0]
 
   def ExtractAbsoluteStrings(self, original_offset, uuid_file_index, proc_info,
@@ -989,6 +1003,9 @@ class TraceV3FileParser(interface.FileObjectParser,
       # This is Loss
       lp = loss.LossParser()
       lp.ParseLoss(self, parser_mediator, tracepoint, proc_info, time)
+    elif tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_TRACE:
+      tp = trace.TraceParser()
+      tp.ParceTrace(self, parser_mediator, tracepoint, proc_info, time)
     else:
       raise errors.ParseError('Unsupported log activity type: {}'.format(
           tracepoint.log_activity_type))

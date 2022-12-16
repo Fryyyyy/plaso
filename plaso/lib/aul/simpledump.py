@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The Apple Unified Logging (AUL) Simpledump file parser."""
+"""The Apple Unified Logging (AUL) Simpledump chunk parser."""
 import csv
 import os
 

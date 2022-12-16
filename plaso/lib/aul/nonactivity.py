@@ -257,14 +257,18 @@ class NonactivityParser():
         uuid_file = tracev3.ExtractAbsoluteStrings(
             tracepoint.format_string_location, formatter_flags.uuid_file_index,
             proc_info, message_string_reference)
-        if uuid_file != '%s':
+        if uuid_file and uuid_file != '%s':
           fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
         else:
           fmt = uuid_file
           uuid_file = None
       elif formatter_flags.uuid_relative:
         uuid_file = tracev3.ExtractAltUUID(formatter_flags.uuid_relative)
-        fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+        if uuid_file:
+          fmt = uuid_file.ReadFormatString(tracepoint.format_string_location)
+        else:
+          fmt = uuid_file
+          uuid_file = None
       else:
         fmt = tracev3.ExtractFormatStrings(tracepoint.format_string_location,
                                            uuid_file)
@@ -291,8 +295,13 @@ class NonactivityParser():
     elif not fmt and not log_data:
       return  # Nothing to do ??
     else:
-      event_data.message = "UNKNOWN"
-      raise errors.ParseError("UNKNOWN")
+      if uuid_file:
+        uuid = uuid_file.uuid
+      else:
+        uuid = 'UNKNOWN'
+      event_data.message = "Error: Invalid offset {0:d} for UUID {1:s}".format(
+        tracepoint.format_string_location, uuid)
+
     event_data.thread_id = hex(tracepoint.thread_identifier)
     event_data.level = constants.LOG_TYPES.get(tracepoint.log_type, "Default")
     if activity_id:
