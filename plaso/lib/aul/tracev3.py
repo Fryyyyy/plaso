@@ -1006,6 +1006,8 @@ class TraceV3FileParser(interface.FileObjectParser,
     elif tracepoint.log_activity_type == constants.FIREHOSE_LOG_ACTIVITY_TYPE_TRACE:
       tp = trace.TraceParser()
       tp.ParceTrace(self, parser_mediator, tracepoint, proc_info, time)
+    elif tracepoint.log_activity_type == 0x0:
+      logger.warning("Remnant/Garbage data")
     else:
       raise errors.ParseError('Unsupported log activity type: {}'.format(
           tracepoint.log_activity_type))
