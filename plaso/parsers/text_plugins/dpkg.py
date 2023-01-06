@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Text parser plugin for Debian package manager log (dpkg.log) files.
 
-Information updated 02 September 2016.
-
 An example:
 
 2016-08-03 15:25:53 install base-passwd:amd64 <none> 3.5.33
@@ -29,9 +27,7 @@ import pyparsing
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
 from plaso.lib import errors
-from plaso.lib import definitions
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
@@ -40,14 +36,17 @@ class DpkgEventData(events.EventData):
   """Dpkg event data.
 
   Attributes:
+    added_time (dfdatetime.DateTimeValues): date and time the log entry
+        was added.
     body (str): body of the log line.
   """
 
-  DATA_TYPE = 'dpkg:line'
+  DATA_TYPE = 'linux:dpkg_log:entry'
 
   def __init__(self):
     """Initializes event data."""
     super(DpkgEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.added_time = None
     self.body = None
 
 
@@ -59,78 +58,76 @@ class DpkgTextPlugin(interface.TextPlugin):
 
   ENCODING = 'utf-8'
 
-  _DPKG_STARTUP = 'startup'
-  _DPKG_STATUS = 'status'
-  _DPKG_CONFFILE = 'conffile'
+  _TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _DPKG_ACTIONS = [
+  _FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
+  _DATE_TIME = pyparsing.Group(
+      _FOUR_DIGITS + pyparsing.Suppress('-') +
+      _TWO_DIGITS + pyparsing.Suppress('-') +
+      _TWO_DIGITS +
+      _TWO_DIGITS + pyparsing.Suppress(':') +
+      _TWO_DIGITS + pyparsing.Suppress(':') +
+      _TWO_DIGITS).setResultsName('date_time')
+
+  _DPKG_STARTUP_TYPE = pyparsing.oneOf([
+      'archives',
+      'packages'])
+
+  _DPKG_STARTUP_COMMAND = pyparsing.oneOf([
+      'unpack',
+      'install',
+      'configure',
+      'triggers-only',
+      'remove',
+      'purge'])
+
+  _DPKG_STARTUP_BODY = pyparsing.Combine((
+      pyparsing.Literal('startup') + _DPKG_STARTUP_TYPE +
+      _DPKG_STARTUP_COMMAND), joinString=' ', adjacent=False)
+
+  _DPKG_STATUS_BODY = pyparsing.Combine((
+      pyparsing.Literal('status') + pyparsing.Word(pyparsing.printables) +
+      pyparsing.Word(pyparsing.printables) +
+      pyparsing.Word(pyparsing.printables)), joinString=' ', adjacent=False)
+
+  _DPKG_ACTION = pyparsing.oneOf([
       'install',
       'upgrade',
       'configure',
       'trigproc',
       'disappear',
       'remove',
-      'purge']
+      'purge'])
 
-  _DPKG_STARTUP_TYPES = [
-      'archives',
-      'packages']
+  _DPKG_ACTION_BODY = pyparsing.Combine((
+      _DPKG_ACTION + pyparsing.Word(pyparsing.printables) +
+      pyparsing.Word(pyparsing.printables) +
+      pyparsing.Word(pyparsing.printables)), joinString=' ', adjacent=False)
 
-  _DPKG_STARTUP_COMMANDS = [
-      'unpack',
+  _DPKG_CONFFILE_DECISION = pyparsing.oneOf([
       'install',
-      'configure',
-      'triggers-only',
-      'remove',
-      'purge']
+      'keep'])
 
-  _DPKG_CONFFILE_DECISIONS = [
-      'install',
-      'keep']
+  _DPKG_CONFFILE_BODY = pyparsing.Combine((
+      pyparsing.Literal('conffile') + pyparsing.Word(pyparsing.printables) +
+      _DPKG_CONFFILE_DECISION), joinString=' ', adjacent=False)
 
-  _DPKG_STARTUP_BODY = pyparsing.Combine(
-      pyparsing.Literal(_DPKG_STARTUP) +
-      pyparsing.oneOf(_DPKG_STARTUP_TYPES) +
-      pyparsing.oneOf(_DPKG_STARTUP_COMMANDS),
-      joinString=' ', adjacent=False)
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
-  _DPKG_STATUS_BODY = pyparsing.Combine(
-      pyparsing.Literal(_DPKG_STATUS) +
-      pyparsing.Word(pyparsing.printables) +
-      pyparsing.Word(pyparsing.printables) +
-      pyparsing.Word(pyparsing.printables),
-      joinString=' ', adjacent=False)
+  _LOG_LINE = (_DATE_TIME + pyparsing.MatchFirst([
+      _DPKG_STARTUP_BODY, _DPKG_STATUS_BODY, _DPKG_ACTION_BODY,
+      _DPKG_CONFFILE_BODY]).setResultsName('body') +
+      _END_OF_LINE)
 
-  _DPKG_ACTION_BODY = pyparsing.Combine(
-      pyparsing.oneOf(_DPKG_ACTIONS) +
-      pyparsing.Word(pyparsing.printables) +
-      pyparsing.Word(pyparsing.printables) +
-      pyparsing.Word(pyparsing.printables),
-      joinString=' ', adjacent=False)
+  _LINE_STRUCTURES = [('log_line', _LOG_LINE)]
 
-  _DPKG_CONFFILE_BODY = pyparsing.Combine(
-      pyparsing.Literal(_DPKG_CONFFILE) +
-      pyparsing.Word(pyparsing.printables) +
-      pyparsing.oneOf(_DPKG_CONFFILE_DECISIONS),
-      joinString=' ', adjacent=False)
-
-  _DPKG_LOG_LINE = (
-      text_parser.PyparsingConstants.DATE_TIME.setResultsName('date_time') +
-      pyparsing.MatchFirst([
-          _DPKG_STARTUP_BODY,
-          _DPKG_STATUS_BODY,
-          _DPKG_ACTION_BODY,
-          _DPKG_CONFFILE_BODY]).setResultsName('body'))
-
-  _LINE_STRUCTURES = [('line', _DPKG_LOG_LINE)]
-
-  _SUPPORTED_KEYS = frozenset([key for key, _ in _LINE_STRUCTURES])
+  VERIFICATION_GRAMMAR = _LOG_LINE
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -139,20 +136,37 @@ class DpkgTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key not in self._SUPPORTED_KEYS:
-      raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
 
-    # Ensure time_elements_tuple is not a pyparsing.ParseResults otherwise
-    # copy.deepcopy() of the dfDateTime object will fail on Python 3.8 with:
-    # "TypeError: 'str' object is not callable" due to pyparsing.ParseResults
-    # overriding __getattr__ with a function that returns an empty string when
-    # named token does not exists.
-    time_elements_structure = structure.get('date_time', None)
+    event_data = DpkgEventData()
+    event_data.added_time = self._ParseTimeElements(time_elements_structure)
+    event_data.body = self._GetValueFromStructure(structure, 'body')
 
+    parser_mediator.ProduceEventData(event_data)
+
+  def _ParseTimeElements(self, time_elements_structure):
+    """Parses date and time elements of a log line.
+
+    Args:
+      time_elements_structure (pyparsing.ParseResults): date and time elements
+          of a log line.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value.
+
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
     try:
+      # Ensure time_elements_tuple is not a pyparsing.ParseResults otherwise
+      # copy.deepcopy() of the dfDateTime object will fail on Python 3.8 with:
+      # "TypeError: 'str' object is not callable" due to pyparsing.ParseResults
+      # overriding __getattr__ with a function that returns an empty string
+      # when named token does not exists.
       year, month, day_of_month, hours, minutes, seconds = (
           time_elements_structure)
 
@@ -160,46 +174,37 @@ class DpkgTextPlugin(interface.TextPlugin):
           year, month, day_of_month, hours, minutes, seconds))
       date_time.is_local_time = True
 
-    except (TypeError, ValueError):
-      parser_mediator.ProduceExtractionWarning(
-          'invalid date time value: {0!s}'.format(time_elements_structure))
-      return
+      return date_time
 
-    body_text = self._GetValueFromStructure(structure, 'body')
-    if not body_text:
-      parser_mediator.ProduceExtractionWarning('missing body text')
-      return
+    except (TypeError, ValueError) as exception:
+      raise errors.ParseError(
+          'Unable to parse time elements with error: {0!s}'.format(exception))
 
-    event_data = DpkgEventData()
-    event_data.body = body_text
-
-    event = time_events.DateTimeValuesEvent(
-        date_time, definitions.TIME_DESCRIPTION_ADDED,
-        time_zone=parser_mediator.timezone)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
-
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      structure = self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
+
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
 
     try:
-      parsed_structure = self._DPKG_LOG_LINE.parseString(line)
-    except pyparsing.ParseException:
+      self._ParseTimeElements(time_elements_structure)
+    except errors.ParseError:
       return False
 
-    return 'date_time' in parsed_structure and 'body' in parsed_structure
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(DpkgTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(DpkgTextPlugin)

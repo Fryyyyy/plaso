@@ -88,7 +88,8 @@ class BaseParser(object):
     """
     super(BaseParser, self).__init__()
     self._default_plugin = None
-    self._plugins = None
+    self._default_plugin_name = '{0:s}_default'.format(self.NAME)
+    self._plugins_per_name = None
     self.EnablePlugins(self.ALL_PLUGINS)
 
   @classmethod
@@ -119,13 +120,12 @@ class BaseParser(object):
           set(['*']) represents all plugins. Note the default plugin, if
           it exists, is always enabled and cannot be disabled.
     """
-    self._plugins = []
+    self._plugins_per_name = {}
     if not self._plugin_classes:
       return
 
-    default_plugin_name = '{0:s}_default'.format(self.NAME)
     for plugin_name, plugin_class in self._plugin_classes.items():
-      if plugin_name == default_plugin_name:
+      if plugin_name == self._default_plugin_name:
         self._default_plugin = plugin_class()
         continue
 
@@ -134,7 +134,7 @@ class BaseParser(object):
         continue
 
       plugin_object = plugin_class()
-      self._plugins.append(plugin_object)
+      self._plugins_per_name[plugin_name] = plugin_object
 
   # TODO: move this to a filter.
   # pylint: disable=redundant-returns-doc
@@ -145,7 +145,7 @@ class BaseParser(object):
     Returns:
       FormatSpecification: a format specification or None if not available.
     """
-    return
+    return None
 
   @classmethod
   def GetPluginNames(cls):
@@ -242,9 +242,16 @@ class FileEntryParser(BaseParser):
       raise errors.WrongParser('Invalid file entry')
 
     parser_mediator.AppendToParserChain(self.NAME)
+
+    parser_chain = parser_mediator.GetParserChain()
+    parser_mediator.SampleStartTiming(parser_chain)
+
     try:
       self.ParseFileEntry(parser_mediator, file_entry)
+
     finally:
+      parser_mediator.SampleStopTiming(parser_chain)
+
       parser_mediator.PopFromParserChain()
 
   @abc.abstractmethod
@@ -263,9 +270,17 @@ class FileEntryParser(BaseParser):
 class FileObjectParser(BaseParser):
   """The file-like object parser interface."""
 
-  # The initial file offset. Set this value to None if no initial
-  # file offset seek needs to be performed.
+  # The initial file offset. Set this value to None if no initial file offset
+  # seek needs to be performed.
   _INITIAL_FILE_OFFSET = 0
+
+  # The maximum file size supported by the parser. Set this value to None if no
+  # file size check needs to be performed.
+  _MAXIMUM_FILE_SIZE = None
+
+  # The minimum file size supported by the parser. Set this value to None if no
+  # file size check needs to be performed.
+  _MINIMUM_FILE_SIZE = None
 
   def Parse(self, parser_mediator, file_object):
     """Parses a single file-like object.
@@ -280,13 +295,36 @@ class FileObjectParser(BaseParser):
     if not file_object:
       raise errors.WrongParser('Invalid file object')
 
+    file_size = file_object.get_size()
+    if file_size == 0:
+      return
+
+    if (self._MINIMUM_FILE_SIZE is not None and
+        file_size < self._MINIMUM_FILE_SIZE):
+      raise errors.WrongParser(
+          'File size: {0:d} too small, minimum: {1:d}.'.format(
+              file_size, self._MINIMUM_FILE_SIZE))
+
+    if (self._MAXIMUM_FILE_SIZE is not None and
+        file_size > self._MAXIMUM_FILE_SIZE):
+      raise errors.WrongParser(
+          'File size: {0:d} too large, maximum: {1:d}.'.format(
+              file_size, self._MAXIMUM_FILE_SIZE))
+
     if self._INITIAL_FILE_OFFSET is not None:
       file_object.seek(self._INITIAL_FILE_OFFSET, os.SEEK_SET)
 
     parser_mediator.AppendToParserChain(self.NAME)
+
+    parser_chain = parser_mediator.GetParserChain()
+    parser_mediator.SampleStartTiming(parser_chain)
+
     try:
       self.ParseFileObject(parser_mediator, file_object)
+
     finally:
+      parser_mediator.SampleStopTiming(parser_chain)
+
       parser_mediator.PopFromParserChain()
 
   @abc.abstractmethod

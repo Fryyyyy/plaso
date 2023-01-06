@@ -10,7 +10,6 @@ from dfdatetime import filetime as dfdatetime_filetime
 from plaso.containers import event_registry
 from plaso.containers import events
 from plaso.containers import windows_events
-from plaso.lib import definitions
 from plaso.lib import specification
 from plaso.parsers import interface
 from plaso.parsers import manager

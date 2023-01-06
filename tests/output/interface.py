@@ -14,48 +14,65 @@ from tests.containers import test_lib as containers_test_lib
 from tests.output import test_lib
 
 
-class TestXMLEventFormattingHelper(formatting_helper.EventFormattingHelper):
-  """XML output module event formatting helper for testing."""
+class TestXMLOutputModule(interface.OutputModule):
+  """XML output module for testing.
+
+  Attributes:
+    file_object (io.StringIO): file-like object to where output is written.
+  """
+
+  NAME = 'test_xml'
+  DESCRIPTION = 'Test output that provides a simple mocked XML.'
 
   def __init__(self):
-    """Initializes a XML event formatting helper."""
-    super(TestXMLEventFormattingHelper, self).__init__()
+    """Initializes a XML output module for testing."""
+    super(TestXMLOutputModule, self).__init__()
     self._field_formatting_helper = formatting_helper.FieldFormattingHelper()
+    self.file_object = io.StringIO()
 
-  def GetFormattedEvent(
+  def _GetFieldValues(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
-    """Retrieves a string representation of the event.
+    """Retrieves the output field values.
 
     Args:
-      output_mediator (OutputMediator): output mediator.
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
       event (EventObject): event.
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
       event_tag (EventTag): event tag.
 
     Returns:
-      str: string representation of the event.
+      dict[str, str]: output field values.
     """
     # pylint: disable=protected-access
     date_time_string = self._field_formatting_helper._FormatDateTime(
         output_mediator, event, event_data, event_data_stream)
 
-    return (
+    return {
+        'datetime': date_time_string,
+        'entry': event_data.entry}
+
+  def _WriteFieldValues(self, output_mediator, field_values):
+    """Writes field values to the output.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      field_values (dict[str, str]): output field values per name.
+    """
+    output_text = (
         '<Event>\n'
         '\t<DateTime>{0:s}</DateTime>\n'
         '\t<Entry>{1:s}</Entry>\n'
-        '</Event>').format(date_time_string, event_data.entry)
+        '</Event>\n').format(
+            field_values['datetime'], field_values['entry'])
 
-
-class TestXMLOutputModule(interface.TextFileOutputModule):
-  """XML output module for testing."""
-
-  NAME = 'test_xml'
-  DESCRIPTION = 'Test output that provides a simple mocked XML.'
+    self.file_object.write(output_text)
 
   def WriteFooter(self):
     """Writes the footer to the output."""
-    self.WriteLine('</EventFile>')
+    self.file_object.write('</EventFile>\n')
 
   def WriteHeader(self, output_mediator):
     """Writes the header to the output.
@@ -64,7 +81,11 @@ class TestXMLOutputModule(interface.TextFileOutputModule):
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
     """
+<<<<<<< HEAD
     self.WriteLine('<EventFile>')
+=======
+    self.file_object.write('<EventFile>\n')
+>>>>>>> origin/main
 
 
 class TextFileOutputModuleTest(test_lib.OutputModuleTestCase):
@@ -92,20 +113,31 @@ class TextFileOutputModuleTest(test_lib.OutputModuleTestCase):
 
   def testOutput(self):
     """Tests an implementation of output module."""
-    test_file_object = io.StringIO()
-
     output_mediator = self._CreateOutputMediator()
+<<<<<<< HEAD
     event_formatting_helper = TestXMLEventFormattingHelper()
     output_module = TestXMLOutputModule(event_formatting_helper)
     output_module._file_object = test_file_object
+=======
+    output_module = TestXMLOutputModule()
+>>>>>>> origin/main
 
     output_module.WriteHeader(output_mediator)
 
     for event_values in self._TEST_EVENTS:
       event, event_data, event_data_stream = (
           containers_test_lib.CreateEventFromValues(event_values))
+<<<<<<< HEAD
       output_module.WriteEvent(
           output_mediator, event, event_data, event_data_stream, None)
+=======
+
+      # TODO: add test for event_tag.
+      field_values = output_module._GetFieldValues(
+          output_mediator, event, event_data, event_data_stream, None)
+
+      output_module._WriteFieldValues(output_mediator, field_values)
+>>>>>>> origin/main
 
     output_module.WriteFooter()
 
@@ -129,7 +161,7 @@ class TextFileOutputModuleTest(test_lib.OutputModuleTestCase):
         '</Event>\n'
         '</EventFile>\n')
 
-    output = test_file_object.getvalue()
+    output = output_module.file_object.getvalue()
     self.assertEqual(output, expected_output)
 
   def testOutputList(self):

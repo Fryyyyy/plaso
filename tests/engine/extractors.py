@@ -13,20 +13,18 @@ from dfvfs.resolver import context
 from dfvfs.resolver import resolver as path_spec_resolver
 
 from plaso.engine import extractors
-from plaso.engine import knowledge_base
 from plaso.parsers import mediator as parsers_mediator
-from plaso.storage.fake import writer as fake_writer
 
 from tests import test_lib as shared_test_lib
+from tests.engine import test_lib
 
 
-class EventExtractorTest(shared_test_lib.BaseTestCase):
-  """Tests for the event extractor."""
+class EventDataExtractorTest(test_lib.EngineTestCase):
+  """Tests for the event data extractor."""
 
   def _CreateParserMediator(
       self, storage_writer, collection_filters_helper=None,
-      file_entry=None, knowledge_base_values=None, parser_chain=None,
-      timezone='UTC'):
+      file_entry=None, knowledge_base_values=None, time_zone_string='UTC'):
     """Creates a parser mediator.
 
     Args:
@@ -35,21 +33,14 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
           filters helper.
       file_entry (Optional[dfvfs.FileEntry]): file entry object being parsed.
       knowledge_base_values (Optional[dict]): knowledge base values.
-      parser_chain (Optional[str]): parsing chain up to this point.
-      timezone (Optional[str]): timezone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
       ParserMediator: parser mediator.
     """
-    knowledge_base_object = knowledge_base.KnowledgeBase()
-    if knowledge_base_values:
-      for identifier, value in knowledge_base_values.items():
-        if identifier == 'codepage':
-          knowledge_base_object.SetCodepage(value)
-        else:
-          knowledge_base_object.SetValue(identifier, value)
-
-    knowledge_base_object.SetTimeZone(timezone)
+    knowledge_base_object = self._CreateKnowledgeBase(
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
 
     parser_mediator = parsers_mediator.ParserMediator(
         knowledge_base_object,
@@ -59,20 +50,7 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
     if file_entry:
       parser_mediator.SetFileEntry(file_entry)
 
-    if parser_chain:
-      parser_mediator.parser_chain = parser_chain
-
     return parser_mediator
-
-  def _CreateStorageWriter(self):
-    """Creates a storage writer object.
-
-    Returns:
-      FakeStorageWriter: storage writer.
-    """
-    storage_writer = fake_writer.FakeStorageWriter()
-    storage_writer.Open()
-    return storage_writer
 
   # TODO: add test for _CheckParserCanProcessFileEntry
   # TODO: add test for _GetSignatureMatchParserNames
@@ -86,7 +64,7 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
     test_file_path = self._GetTestFilePath(['INFO2'])
     self._SkipIfPathNotExists(test_file_path)
 
-    test_extractor = extractors.EventExtractor(
+    test_extractor = extractors.EventDataExtractor(
         parser_filter_expression='recycle_bin_info2')
 
     path_spec = path_spec_factory.Factory.NewPathSpec(
@@ -99,8 +77,9 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
 
     test_extractor.ParseDataStream(parser_mediator, file_entry, '')
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -115,7 +94,7 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
     test_file_path = self._GetTestFilePath(['UsnJrnl.raw'])
     self._SkipIfPathNotExists(test_file_path)
 
-    test_extractor = extractors.EventExtractor(
+    test_extractor = extractors.EventDataExtractor(
         force_parser=True, parser_filter_expression='usnjrnl')
 
     path_spec = path_spec_factory.Factory.NewPathSpec(
@@ -143,7 +122,7 @@ class EventExtractorTest(shared_test_lib.BaseTestCase):
   # TODO: add test for ParseMetadataFile
 
 
-class PathSpecExtractorTest(shared_test_lib.BaseTestCase):
+class PathSpecExtractorTest(test_lib.EngineTestCase):
   """Tests for the path specification extractor."""
 
   # pylint: disable=protected-access

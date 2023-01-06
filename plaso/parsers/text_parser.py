@@ -1,210 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Base parser for text formats."""
+"""Text log parser."""
 
-import abc
 import codecs
-
-import pyparsing
-
-from dfvfs.helpers import text_file
+import io
+import os
 
 from plaso.lib import errors
 from plaso.parsers import interface
 from plaso.parsers import logger
 from plaso.parsers import manager
-
-
-# TODO: determine if this method should be merged with PyParseIntCast.
-
-def ConvertTokenToInteger(string, location, tokens):  # pylint: disable=unused-argument
-  """Pyparsing parse action callback to convert a token into an integer value.
-
-  Args:
-    string (str): original string.
-    location (int): location in the string where the token was found.
-    tokens (list[str]): tokens.
-
-  Returns:
-    int: integer value or None.
-  """
-  try:
-    integer = int(tokens[0], 10)
-  except ValueError:
-    integer = None
-
-  return integer
-
-
-def PyParseIntCast(string, location, tokens):  # pylint: disable=unused-argument
-  """Return an integer from a string.
-
-  This is a pyparsing callback method that converts the matched
-  string into an integer.
-
-  The method modifies the content of the tokens list and converts
-  them all to an integer value.
-
-  Args:
-    string (str): original string.
-    location (int): location in the string where the match was made.
-    tokens (list[str]): extracted tokens, where the string to be converted
-        is stored.
-  """
-  # Cast the regular tokens.
-  for index, token in enumerate(tokens):
-    try:
-      tokens[index] = int(token)
-    except ValueError:
-      logger.error('Unable to cast [{0:s}] to an int, setting to 0'.format(
-          token))
-      tokens[index] = 0
-
-  # We also need to cast the dictionary built tokens.
-  for key in tokens.keys():
-    try:
-      tokens[key] = int(tokens[key], 10)
-    except ValueError:
-      logger.error(
-          'Unable to cast [{0:s} = {1:d}] to an int, setting to 0'.format(
-              key, tokens[key]))
-      tokens[key] = 0
-
-
-class PyparsingConstants(object):
-  """Constants for pyparsing-based parsers."""
-
-  # Numbers.
-  INTEGER = pyparsing.Word(pyparsing.nums).setParseAction(PyParseIntCast)
-
-  # TODO: deprecate and remove, use THREE_LETTERS instead.
-  # TODO: fix Python 3 compatibility of .uppercase and .lowercase.
-  # pylint: disable=no-member
-  MONTH = pyparsing.Word(
-      pyparsing.string.ascii_uppercase, pyparsing.string.ascii_lowercase,
-      exact=3)
-
-  # Define date structures.
-  HYPHEN = pyparsing.Literal('-').suppress()
-
-  ONE_OR_TWO_DIGITS = pyparsing.Word(pyparsing.nums, max=2).setParseAction(
-      PyParseIntCast)
-  ONE_TO_THREE_DIGITS = pyparsing.Word(pyparsing.nums, max=3).setParseAction(
-      PyParseIntCast)
-
-  TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
-      PyParseIntCast)
-  THREE_DIGITS = pyparsing.Word(pyparsing.nums, exact=3).setParseAction(
-      PyParseIntCast)
-  FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
-      PyParseIntCast)
-
-  THREE_LETTERS = pyparsing.Word(pyparsing.alphas, exact=3)
-
-  DATE_ELEMENTS = (
-      FOUR_DIGITS.setResultsName('year') + pyparsing.Suppress('-') +
-      TWO_DIGITS.setResultsName('month') + pyparsing.Suppress('-') +
-      TWO_DIGITS.setResultsName('day_of_month'))
-  TIME_ELEMENTS = (
-      TWO_DIGITS.setResultsName('hours') + pyparsing.Suppress(':') +
-      TWO_DIGITS.setResultsName('minutes') + pyparsing.Suppress(':') +
-      TWO_DIGITS.setResultsName('seconds'))
-  TIME_MSEC_ELEMENTS = (
-      TIME_ELEMENTS + pyparsing.Word('.,', exact=1).suppress() +
-      INTEGER.setResultsName('microseconds'))
-
-  # Date structures defined as a single group.
-  DATE = pyparsing.Group(DATE_ELEMENTS)
-  DATE_TIME = pyparsing.Group(DATE_ELEMENTS + TIME_ELEMENTS)
-  DATE_TIME_MSEC = pyparsing.Group(DATE_ELEMENTS + TIME_MSEC_ELEMENTS)
-  TIME = pyparsing.Group(TIME_ELEMENTS)
-
-  TIME_MSEC = TIME + pyparsing.Suppress('.') + INTEGER
-  # TODO: replace by
-  # TIME_MSEC = pyparsing.Group(TIME_MSEC_ELEMENTS)
-
-  COMMENT_LINE_HASH = pyparsing.Literal('#') + pyparsing.SkipTo(
-      pyparsing.LineEnd())
-  # TODO: Add more commonly used structs that can be used by parsers.
-  PID = pyparsing.Word(pyparsing.nums, max=5).setParseAction(PyParseIntCast)
-
-
-class PyparsingLineStructure(object):
-  """Line structure.
-
-  Attributes:
-    expression (pyparsing.ParserElement): pyparsing expression to parse
-        the line structure.
-    name (str): name to identify the line structure.
-    weight (int): number of times the line structure was successfully used.
-  """
-
-  def __init__(self, name, expression):
-    """Initializes a line structure.
-
-    Args:
-      name (str): name to identify the line structure.
-      expression (pyparsing.ParserElement): pyparsing expression to parse
-          the line structure.
-    """
-    super(PyparsingLineStructure, self).__init__()
-    self.expression = expression
-    self.name = name
-    self.weight = 0
-
-  def ParseString(self, string):
-    """Parses a string.
-
-    Args:
-      string (str): string to parse.
-
-    Returns:
-      pyparsing.ParseResults: parsed tokens or None if the string could not
-          be parsed.
-    """
-    try:
-      return self.expression.parseString(string)
-    except pyparsing.ParseException as exception:
-      logger.debug('Unable to parse string with error: {0!s}'.format(
-          exception))
-
-    return None
-
-
-class SingleLineTextParser(interface.FileObjectParser):
-  """Single-line text parser."""
-
-  NAME = 'text'
-  DATA_FORMAT = 'Single-line text log file'
-
-  _plugin_classes = {}
-
-  def ParseFileObject(self, parser_mediator, file_object):
-    """Parses a text file-like object using a pyparsing definition.
-
-    Args:
-      parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfVFS.
-      file_object (dfvfs.FileIO): file-like object.
-
-    Raises:
-      WrongParser: when the file cannot be parsed.
-    """
-    for plugin in self._plugins:
-      if parser_mediator.abort:
-        break
-
-      text_file_object = text_file.TextFile(
-          file_object, encoding=plugin.ENCODING or parser_mediator.codepage)
-
-      if plugin.CheckRequiredFormat(parser_mediator, text_file_object):
-        try:
-          plugin.UpdateChainAndProcess(
-              parser_mediator, file_object=file_object)
-
-        except Exception as exception:  # pylint: disable=broad-except
-          parser_mediator.ProduceExtractionWarning((
-              'plugin: {0:s} unable to parse text file with error: '
-              '{1!s}').format(plugin.NAME, exception))
 
 
 class EncodedTextReader(object):
@@ -214,96 +18,62 @@ class EncodedTextReader(object):
     lines (str): lines of text.
   """
 
-  def __init__(self, encoding, buffer_size=2048):
-    """Initializes the encoded text reader object.
+  def __init__(
+      self, file_object, buffer_size=2048, encoding='utf-8',
+      encoding_errors='strict'):
+    """Initializes a encoded text reader.
 
     Args:
-      encoding (str): encoding.
+      file_object (FileIO): a file-like object to read from.
       buffer_size (Optional[int]): buffer size.
+      encoding (Optional[str]): text encoding.
+      encoding_errors (Optional[str]): text encoding errors handler.
     """
+    stream_reader_class = codecs.getreader(encoding)
+
     super(EncodedTextReader, self).__init__()
-    self._buffer = ''
     self._buffer_size = buffer_size
-    self._current_offset = 0
-    self._encoding = encoding
+    self._file_object = file_object
+    self._stream_reader = stream_reader_class(
+        file_object, errors=encoding_errors)
 
     self.lines = ''
+    self.line_number = 0
 
-  def _ReadLine(self, file_object):
-    """Reads a line from the file object.
-
-    Args:
-      file_object (dfvfs.FileIO): file-like object.
-
-    Returns:
-      str: line read from the file-like object.
-    """
-    if len(self._buffer) < self._buffer_size:
-      content = file_object.read(self._buffer_size)
-      content = content.decode(self._encoding)
-      self._buffer = ''.join([self._buffer, content])
-
-    line, new_line, self._buffer = self._buffer.partition('\n')
-    if not line and not new_line:
-      line = self._buffer
-      self._buffer = ''
-
-    self._current_offset += len(line)
-
-    # Strip carriage returns from the text.
-    if line.endswith('\r'):
-      line = line[:-len('\r')]
-
-    if new_line:
-      line = ''.join([line, '\n'])
-      self._current_offset += len('\n')
-
-    return line
-
-  def ReadLine(self, file_object):
+  def ReadLine(self):
     """Reads a line.
-
-    Args:
-      file_object (dfvfs.FileIO): file-like object.
 
     Returns:
       str: line read from the lines buffer.
     """
+    if not self.lines:
+      self.ReadLines()
+
     line, _, self.lines = self.lines.partition('\n')
-    if not line:
-      self.ReadLines(file_object)
-      line, _, self.lines = self.lines.partition('\n')
+    self.line_number += 1
 
     return line
 
-  def ReadLines(self, file_object):
-    """Reads lines into the lines buffer.
+  def ReadLines(self):
+    """Reads lines into the lines buffer."""
+    current_offset = self._file_object.tell()
 
-    Args:
-      file_object (dfvfs.FileIO): file-like object.
-    """
-    lines_size = len(self.lines)
-    if lines_size < self._buffer_size:
-      lines_size = self._buffer_size - lines_size
-      while lines_size > 0:
-        line = self._ReadLine(file_object)
-        if not line:
-          break
+    decoded_data = self._stream_reader.read(size=self._buffer_size)
+    if decoded_data:
+      # Remove a byte-order mark at the start of the file.
+      if current_offset == 0 and decoded_data[0] == '\ufeff':
+        decoded_data = decoded_data[1:]
 
-        self.lines = ''.join([self.lines, line])
-        lines_size -= len(line)
+      # Strip carriage returns from the text.
+      decoded_data = '\n'.join([
+          line.rstrip('\r') for line in decoded_data.split('\n')])
 
-  def Reset(self):
-    """Resets the encoded text reader."""
-    self._buffer = ''
-    self._current_offset = 0
-    self.lines = ''
+      self.lines = ''.join([self.lines, decoded_data])
 
-  def SkipAhead(self, file_object, number_of_characters):
+  def SkipAhead(self, number_of_characters):
     """Skips ahead a number of characters.
 
     Args:
-      file_object (dfvfs.FileIO): file-like object.
       number_of_characters (int): number of characters.
     """
     lines_size = len(self.lines)
@@ -311,157 +81,89 @@ class EncodedTextReader(object):
       number_of_characters -= lines_size
 
       self.lines = ''
-      self.ReadLines(file_object)
+      self.ReadLines()
       lines_size = len(self.lines)
       if lines_size == 0:
         return
 
+    self.line_number += self.lines[:number_of_characters].count('\n')
     self.lines = self.lines[number_of_characters:]
 
+  # Note: that the following functions do not follow the style guide
+  # because they are part of the file-like object interface.
+  # pylint: disable=invalid-name
 
-class PyparsingMultiLineTextParser(interface.FileObjectParser):
-  """Multi-line text parser interface based on pyparsing."""
+  def get_offset(self):
+    """Retrieves the current offset into the file-like object.
 
-  BUFFER_SIZE = 2048
+    Returns:
+      int: current offset into the file-like object.
+    """
+    return self._file_object.tell()
 
-  # The actual structure, this needs to be defined by each parser.
-  # This is defined as a list of tuples so that more than a single line
-  # structure can be defined. That way the parser can support more than a
-  # single type of log entry, despite them all having in common the constraint
-  # that each log entry is a single line.
-  # The tuple should have two entries, a key and a structure. This is done to
-  # keep the structures in an order of priority/preference.
-  # The key is a comment or an identification that is passed to the ParseRecord
-  # function so that the developer can identify which structure got parsed.
-  # The value is the actual pyparsing structure.
-  LINE_STRUCTURES = []
 
-  # The maximum number of consecutive lines that don't match known line
-  # structures to encounter before aborting parsing.
-  MAXIMUM_CONSECUTIVE_LINE_FAILURES = 20
+class TextLogParser(interface.FileObjectParser):
+  """Text-based log file parser."""
 
-  _ENCODING = None
+  NAME = 'text'
+  DATA_FORMAT = 'text-based log file'
 
-  _MONTH_DICT = {
-      'jan': 1,
-      'feb': 2,
-      'mar': 3,
-      'apr': 4,
-      'may': 5,
-      'jun': 6,
-      'jul': 7,
-      'aug': 8,
-      'sep': 9,
-      'oct': 10,
-      'nov': 11,
-      'dec': 12}
+  _NON_TEXT_CHARACTERS = frozenset([
+      '\x00', '\x01', '\x02', '\x03', '\x04', '\x05', '\x06', '\x0b', '\x0e',
+      '\x0f', '\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17',
+      '\x18', '\x19', '\x1a', '\x1c', '\x1d', '\x1e', '\x1f', '\x7f'])
+
+  _plugin_classes = {}
 
   def __init__(self):
-    """Initializes a parser."""
-    super(PyparsingMultiLineTextParser, self).__init__()
-    self._buffer_size = self.BUFFER_SIZE
-    self._current_offset = 0
-    self._line_structures = []
-    self._parser_mediator = None
+    """Initializes a text-based log parser."""
+    super(TextLogParser, self).__init__()
+    self._plugins_per_encoding = {}
 
-    codecs.register_error('text_parser_handler', self._EncodingErrorHandler)
-
-    if self.LINE_STRUCTURES:
-      self._SetLineStructures(self.LINE_STRUCTURES)
-
-  def _EncodingErrorHandler(self, exception):
-    """Encoding error handler.
+  def _ContainsBinary(self, text):
+    """Determines if the text contains binary (non-text) characters.
 
     Args:
-      exception [UnicodeDecodeError]: exception.
+      text (str): text.
 
     Returns:
-      tuple[str, int]: replacement string and a position where encoding should
-          continue.
-
-    Raises:
-      TypeError: if exception is not of type UnicodeDecodeError.
+      bool: True if the text contains binary (non-text) characters.
     """
-    if not isinstance(exception, UnicodeDecodeError):
-      raise TypeError('Unsupported exception type.')
+    return bool(self._NON_TEXT_CHARACTERS.intersection(set(text)))
 
-    if self._parser_mediator:
-      self._parser_mediator.ProduceExtractionWarning(
-          'error decoding 0x{0:02x} at offset: {1:d}'.format(
-              exception.object[exception.start],
-              self._current_offset + exception.start))
-
-    escaped = '\\x{0:2x}'.format(exception.object[exception.start])
-    return (escaped, exception.start + 1)
-
-  def _GetValueFromStructure(self, structure, name, default_value=None):
-    """Retrieves a token value from a Pyparsing structure.
-
-    This method ensures the token value is set to the default value when
-    the token is not present in the structure. Instead of returning
-    the Pyparsing default value of an empty byte stream (b'').
+  def EnablePlugins(self, plugin_includes):
+    """Enables parser plugins.
 
     Args:
-      structure (pyparsing.ParseResults): tokens from a parsed log line.
-      name (str): name of the token.
-      default_value (Optional[object]): default value.
-
-    Returns:
-      object: value in the token or default value if the token is not available
-          in the structure.
+      plugin_includes (set[str]): names of the plugins to enable, where
+          set(['*']) represents all plugins. Note the default plugin, if
+          it exists, is always enabled and cannot be disabled.
     """
-    value = structure.get(name, default_value)
-    if isinstance(value, pyparsing.ParseResults) and not value:
-      # Ensure the return value is not an empty pyparsing.ParseResults otherwise
-      # serialization will fail.
-      return None
+    self._plugins_per_name = {}
+    self._plugins_per_encoding = {}
+    if not self._plugin_classes:
+      return
 
-    return value
+    for plugin_name, plugin_class in self._plugin_classes.items():
+      if plugin_name == self._default_plugin_name:
+        self._default_plugin = plugin_class()
+        continue
 
-  def _ParseLineStructure(
-      self, parser_mediator, index, line_structure, parsed_structure):
-    """Parses a line structure and produces events.
+      if (plugin_includes != self.ALL_PLUGINS and
+          plugin_name not in plugin_includes):
+        continue
 
-    Args:
-      parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfVFS.
-      index (int): index of the line structure in the run-time list of line
-          structures.
-      line_structure (PyparsingLineStructure): line structure.
-      parsed_structure (pyparsing.ParseResults): tokens from a string parsed
-          with pyparsing.
+      plugin_object = plugin_class()
+      self._plugins_per_name[plugin_name] = plugin_object
 
-    Raises:
-      ParseError: if the structure cannot be parsed.
-    """
-    self.ParseRecord(parser_mediator, line_structure.name, parsed_structure)
+      encoding = plugin_class.ENCODING or 'default'
+      if encoding not in self._plugins_per_encoding:
+        self._plugins_per_encoding[encoding] = []
 
-    line_structure.weight += 1
-
-    if index:
-      previous_weight = self._line_structures[index - 1].weight
-      if previous_weight and line_structure.weight > previous_weight:
-        self._line_structures[index] = self._line_structures[index - 1]
-        self._line_structures[index - 1] = line_structure
-
-  def _SetLineStructures(self, line_structures):
-    """Sets the line structures.
-
-    Args:
-      line_structures ([(str, pyparsing.ParserElement)]): tuples of pyparsing
-          expressions to parse a line and their names.
-    """
-    self._line_structures = []
-    for key, expression in line_structures:
-      # Using parseWithTabs() overrides Pyparsing's default replacement of tabs
-      # with spaces to SkipAhead() the correct number of bytes after a match.
-      expression.parseWithTabs()
-
-      line_structure = PyparsingLineStructure(key, expression)
-      self._line_structures.append(line_structure)
+      self._plugins_per_encoding[encoding].append(plugin_object)
 
   def ParseFileObject(self, parser_mediator, file_object):
-    """Parses a text file-like object using a pyparsing definition.
+    """Parses a text log file-like object.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -471,121 +173,83 @@ class PyparsingMultiLineTextParser(interface.FileObjectParser):
     Raises:
       WrongParser: when the file cannot be parsed.
     """
-    if not self._line_structures:
-      raise errors.WrongParser('Missing line structures.')
+    file_object.seek(0, os.SEEK_SET)
 
-    self._parser_mediator = parser_mediator
+    # Cache the first 64k of encoded data so it does not need to be read for
+    # each encoding.
+    encoded_data_buffer = file_object.read(64 * 1024)
 
-    encoding = self._ENCODING or parser_mediator.codepage
-    text_reader = EncodedTextReader(
-        encoding, buffer_size=self.BUFFER_SIZE)
-
-    text_reader.Reset()
-
-    try:
-      text_reader.ReadLines(file_object)
-    except UnicodeDecodeError as exception:
-      raise errors.WrongParser(
-          'Not a text file, with error: {0!s}'.format(exception))
-
-    if not self.VerifyStructure(parser_mediator, text_reader.lines):
-      raise errors.WrongParser('Wrong file structure.')
-
-    consecutive_line_failures = 0
-    # Read every line in the text file.
-    while text_reader.lines:
+    matching_plugin = False
+    for encoding, plugins in self._plugins_per_encoding.items():
       if parser_mediator.abort:
         break
 
-      # Initialize pyparsing objects.
-      tokens = None
-      start = 0
-      end = 0
+      if encoding == 'default':
+        encoding = parser_mediator.codepage
 
-      index = None
-      line_structure = None
+      for plugin in plugins:
+        if parser_mediator.abort:
+          break
 
-      # Try to parse the line using all the line structures.
-      for index, line_structure in enumerate(self._line_structures):
+        profiling_name = '/'.join([self.NAME, plugin.NAME])
+
+        parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
         try:
-          structure_generator = line_structure.expression.scanString(
-              text_reader.lines, maxMatches=1)
-          parsed_structure = next(structure_generator, None)
-        except pyparsing.ParseException:
-          parsed_structure = None
+          logger.debug(
+              'Checking required format of: {0:s} in encoding: {1:s}'.format(
+                  plugin.NAME, encoding))
 
-        if parsed_structure:
-          tokens, start, end = parsed_structure
+          encoded_data_file_object = io.BytesIO(encoded_data_buffer)
+          text_reader = EncodedTextReader(
+              encoded_data_file_object, buffer_size=plugin.MAXIMUM_LINE_LENGTH,
+              encoding=encoding)
 
-          # Only want to parse the structure if it starts
-          # at the beginning of the buffer.
-          if start == 0:
-            break
+          try:
+            text_reader.ReadLines()
+          except UnicodeDecodeError:
+            logger.debug((
+                'Unable to read text-based log file with encoding: '
+                '{0:s}').format(encoding))
+            continue
 
-      if tokens and start == 0:
-        try:
-          self._ParseLineStructure(
-              parser_mediator, index, line_structure, tokens)
-          consecutive_line_failures = 0
+          if self._ContainsBinary(text_reader.lines):
+            logger.debug('Detected binary format')
+            continue
 
-        except errors.ParseError as exception:
-          parser_mediator.ProduceExtractionWarning(
-              'unable to parse record: {0:s} with error: {1!s}'.format(
-                  line_structure.name, exception))
+          result = plugin.CheckRequiredFormat(parser_mediator, text_reader)
 
-        text_reader.SkipAhead(file_object, end)
+        finally:
+          parser_mediator.SampleFormatCheckStopTiming(profiling_name)
 
-      else:
-        odd_line = text_reader.ReadLine(file_object)
-        if odd_line:
-          if len(odd_line) > 80:
-            odd_line = '{0:s}...'.format(odd_line[:77])
+        if result:
+          matching_plugin = True
 
-          parser_mediator.ProduceExtractionWarning(
-              'unable to parse log line: {0:s}'.format(repr(odd_line)))
+          parser_mediator.SampleStartTiming(profiling_name)
 
-          consecutive_line_failures += 1
-          if (consecutive_line_failures >
-              self.MAXIMUM_CONSECUTIVE_LINE_FAILURES):
-            raise errors.WrongParser(
-                'more than {0:d} consecutive failures to parse lines.'.format(
-                    self.MAXIMUM_CONSECUTIVE_LINE_FAILURES))
+          try:
+            plugin.UpdateChainAndProcess(
+                parser_mediator, file_object=file_object)
+          except Exception as exception:  # pylint: disable=broad-except
+            parser_mediator.ProduceExtractionWarning((
+                'plugin: {0:s} unable to parse text file with error: '
+                '{1!s}').format(plugin.NAME, exception))
+            continue
 
-      try:
-        text_reader.ReadLines(file_object)
-      except UnicodeDecodeError as exception:
-        parser_mediator.ProduceExtractionWarning(
-            'unable to read lines with error: {0!s}'.format(exception))
+          finally:
+            parser_mediator.SampleStopTiming(profiling_name)
 
-  @abc.abstractmethod
-  def ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
+          if hasattr(plugin, 'GetYearLessLogHelper'):
+            year_less_log_helper = plugin.GetYearLessLogHelper()
+            parser_mediator.AddYearLessLogHelper(year_less_log_helper)
 
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+          break
 
-    Args:
-      parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfVFS.
-      key (str): name of the parsed structure.
-      structure (pyparsing.ParseResults): tokens from a parsed log line.
-    """
+      if matching_plugin:
+        break
 
-  @abc.abstractmethod
-  def VerifyStructure(self, parser_mediator, lines):  # pylint: disable=arguments-renamed
-    """Verify the structure of the file and return boolean based on that check.
-
-    This function should read enough text from the text file to confirm
-    that the file is the correct one for this particular parser.
-
-    Args:
-      parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfVFS.
-      lines (str): one or more lines from the text file.
-
-    Returns:
-      bool: True if this is the correct parser, False otherwise.
-    """
+    if not matching_plugin:
+      raise errors.WrongParser('No matching text-based log plugin found.')
 
 
-manager.ParsersManager.RegisterParser(SingleLineTextParser)
+manager.ParsersManager.RegisterParser(TextLogParser)

@@ -20,8 +20,10 @@ from plaso.engine import engine
 from plaso.engine import extractors
 from plaso.engine import logger
 from plaso.engine import process_info
+from plaso.engine import timeliner
 from plaso.engine import worker
 from plaso.lib import definitions
+from plaso.lib import errors
 from plaso.parsers import mediator as parsers_mediator
 
 
@@ -35,9 +37,12 @@ class SingleProcessEngine(engine.BaseEngine):
     """Initializes a single process extraction engine."""
     super(SingleProcessEngine, self).__init__()
     self._current_display_name = ''
+    self._event_data_timeliner = None
     self._extraction_worker = None
     self._file_system_cache = []
+    self._number_of_consumed_event_data = 0
     self._number_of_consumed_sources = 0
+    self._number_of_produced_events = 0
     self._parser_mediator = None
     self._parsers_counter = None
     self._path_spec_extractor = extractors.PathSpecExtractor()
@@ -77,6 +82,53 @@ class SingleProcessEngine(engine.BaseEngine):
         self._file_system_cache.remove(file_system)
         self._file_system_cache.append(file_system)
 
+<<<<<<< HEAD
+=======
+  def _ProcessEventData(self):
+    """Generate events from event data."""
+    if self._processing_profiler:
+      self._processing_profiler.StartTiming('process_event_data')
+
+    self._status = definitions.STATUS_INDICATOR_TIMELINING
+
+    if self._processing_profiler:
+      self._processing_profiler.StartTiming('get_event_data')
+
+    event_data = self._storage_writer.GetFirstWrittenEventData()
+
+    if self._processing_profiler:
+      self._processing_profiler.StopTiming('get_event_data')
+
+    while event_data:
+      if self._abort:
+        break
+
+      self._event_data_timeliner.ProcessEventData(
+          self._storage_writer, event_data)
+
+      self._number_of_consumed_event_data += 1
+      self._number_of_produced_events += (
+          self._event_data_timeliner.number_of_produced_events)
+
+      # TODO: track number of consumed event data containers?
+
+      if self._processing_profiler:
+        self._processing_profiler.StartTiming('get_event_data')
+
+      event_data = self._storage_writer.GetNextWrittenEventData()
+
+      if self._processing_profiler:
+        self._processing_profiler.StopTiming('get_event_data')
+
+    if self._abort:
+      self._status = definitions.STATUS_INDICATOR_ABORTED
+    else:
+      self._status = definitions.STATUS_INDICATOR_COMPLETED
+
+    if self._processing_profiler:
+      self._processing_profiler.StopTiming('process_event_data')
+
+>>>>>>> origin/main
   def _ProcessPathSpec(self, parser_mediator, path_spec):
     """Processes a path specification.
 
@@ -297,7 +349,7 @@ class SingleProcessEngine(engine.BaseEngine):
     while self._status_update_active:
       self._UpdateStatus()
 
-      time.sleep(self._STATUS_UPDATE_INTERVAL)
+      time.sleep(self._status_update_interval)
 
   def _StopStatusUpdateThread(self):
     """Stops the status update thread."""
@@ -321,7 +373,9 @@ class SingleProcessEngine(engine.BaseEngine):
         self._name, status, self._pid, used_memory, self._current_display_name,
         self._number_of_consumed_sources,
         self._parser_mediator.number_of_produced_event_sources,
-        0, self._parser_mediator.number_of_produced_events,
+        self._number_of_consumed_event_data,
+        self._parser_mediator.number_of_produced_event_data,
+        0, self._number_of_produced_events,
         0, 0,
         0, 0)
 
@@ -349,16 +403,14 @@ class SingleProcessEngine(engine.BaseEngine):
 
     parser_mediator.SetExtractWinEvtResources(
         processing_configuration.extraction.extract_winevt_resources)
+    parser_mediator.SetPreferredCodepage(
+        processing_configuration.preferred_codepage)
     parser_mediator.SetPreferredLanguage(
         processing_configuration.preferred_language)
     parser_mediator.SetPreferredTimeZone(
         processing_configuration.preferred_time_zone)
-    parser_mediator.SetPreferredYear(
-        processing_configuration.preferred_year)
     parser_mediator.SetTemporaryDirectory(
         processing_configuration.temporary_directory)
-    parser_mediator.SetTextPrepend(
-        processing_configuration.text_prepend)
 
     return parser_mediator
 
@@ -382,6 +434,9 @@ class SingleProcessEngine(engine.BaseEngine):
 
     Returns:
       ProcessingStatus: processing status.
+
+    Raises:
+      BadConfigOption: if the preferred time zone is invalid.
     """
     parser_mediator = self._CreateParserMediator(
         self.knowledge_base, resolver_context, processing_configuration)
@@ -393,6 +448,17 @@ class SingleProcessEngine(engine.BaseEngine):
 
     self._extraction_worker.SetExtractionConfiguration(
         processing_configuration.extraction)
+
+    self._event_data_timeliner = timeliner.EventDataTimeliner(
+        self.knowledge_base,
+        data_location=processing_configuration.data_location,
+        preferred_year=processing_configuration.preferred_year)
+
+    try:
+      self._event_data_timeliner.SetPreferredTimeZone(
+          processing_configuration.preferred_time_zone)
+    except ValueError as exception:
+      raise errors.BadConfigOption(exception)
 
     self._parser_mediator = parser_mediator
     self._processing_configuration = processing_configuration
@@ -430,6 +496,8 @@ class SingleProcessEngine(engine.BaseEngine):
       self._ProcessSources(source_configurations, parser_mediator)
       self._ProcessEventData(parser_mediator)
 
+      self._ProcessEventData()
+
     finally:
       # Stop the status update thread after close of the storage writer
       # so we include the storage sync to disk in the status updates.
@@ -450,6 +518,17 @@ class SingleProcessEngine(engine.BaseEngine):
       self._StopProfiling()
       parser_mediator.StopProfiling()
 
+    for key, value in self._event_data_timeliner.parsers_counter.items():
+      parser_count = self._parsers_counter.get(key, None)
+      if parser_count:
+        parser_count.number_of_events += value
+        self._storage_writer.UpdateAttributeContainer(parser_count)
+      else:
+        parser_count = counts.ParserCount(name=key, number_of_events=value)
+        self._parsers_counter[key] = parser_count
+        self._storage_writer.AddAttributeContainer(parser_count)
+
+    # TODO: remove after completion event and event data split.
     for key, value in parser_mediator.parsers_counter.items():
       parser_count = self._parsers_counter.get(key, None)
       if parser_count:
@@ -469,6 +548,7 @@ class SingleProcessEngine(engine.BaseEngine):
     # Update the status view one last time.
     self._UpdateStatus()
 
+    self._event_data_timeliner = None
     self._extraction_worker = None
     self._file_system_cache = []
     self._parser_mediator = None

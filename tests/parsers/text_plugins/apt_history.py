@@ -4,6 +4,9 @@
 
 import unittest
 
+from dfvfs.helpers import fake_file_system_builder
+
+from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import apt_history
 
 from tests.parsers.text_plugins import test_lib
@@ -12,13 +15,34 @@ from tests.parsers.text_plugins import test_lib
 class APTHistoryLogTextPluginTest(test_lib.TextPluginTestCase):
   """Tests for the APT History log text parser plugin."""
 
+  def testCheckRequiredFormat(self):
+    """Tests for the CheckRequiredFormat method."""
+    plugin = apt_history.APTHistoryLogTextPlugin()
+
+    file_system_builder = fake_file_system_builder.FakeFileSystemBuilder()
+    file_system_builder.AddFile('/file.txt', (
+        b'Start-Date: 2019-07-10  16:38:08\n'
+        b'Commandline: apt-get upgrade --no-install-recommends --assume-yes\n'))
+
+    file_entry = file_system_builder.file_system.GetFileEntryByPath('/file.txt')
+
+    parser_mediator = self._CreateParserMediator(None, file_entry=file_entry)
+
+    file_object = file_entry.GetFileObject()
+    text_reader = text_parser.EncodedTextReader(file_object)
+    text_reader.ReadLines()
+
+    result = plugin.CheckRequiredFormat(parser_mediator, text_reader)
+    self.assertTrue(result)
+
   def testProcess(self):
     """Tests the Process function."""
     plugin = apt_history.APTHistoryLogTextPlugin()
     storage_writer = self._ParseTextFileWithPlugin(['apt_history.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 10)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 10)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,12 +52,8 @@ class APTHistoryLogTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    # TODO: sort events.
-    # events = list(storage_writer.GetSortedEvents())
-
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'apt:history:line',
         'date_time': '2019-07-10T16:38:08'}
 
@@ -51,8 +71,16 @@ class APTHistoryLogTextPluginTest(test_lib.TextPluginTestCase):
             'python3-dev git tmux screen joe'),
         'data_type': 'apt:history:line',
         'date_time': '2019-07-11T12:20:55',
+=======
+        'command': 'Install',
+        'command_line': (
+            'apt-get -y install python-pip python3-pip python-dev python3-dev '
+            'git tmux screen joe'),
+        'data_type': 'linux:apt_history_log:entry',
+        'end_time': '2019-07-11T12:21:28',
+>>>>>>> origin/main
         'packages': (
-            'Install: libmpc3:amd64 (1.0.3-1+b2, automatic), '
+            'libmpc3:amd64 (1.0.3-1+b2, automatic), '
             'manpages:amd64 (4.10-2, automatic), '
             'libmpx2:amd64 (6.3.0-18+deb9u1, automatic), '
             'python3-dev:amd64 (3.5.3-1), '
@@ -164,8 +192,10 @@ class APTHistoryLogTextPluginTest(test_lib.TextPluginTestCase):
             'python-all-dev:amd64 (2.7.13-2, automatic), '
             'python3-pyasn1:amd64 (0.1.9-2, automatic), '
             'libstdc++-6-dev:amd64 (6.3.0-18+deb9u1, automatic), '
-            'liberror-perl:amd64 (0.17024-1, automatic)')}
+            'liberror-perl:amd64 (0.17024-1, automatic)'),
+        'start_time': '2019-07-11T12:20:55'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[2], expected_event_values)
 
     expected_event_values = {
@@ -242,6 +272,10 @@ class APTHistoryLogTextPluginTest(test_lib.TextPluginTestCase):
         'timestamp': '2019-07-10 14:38:08.000000'}
 
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

@@ -18,9 +18,9 @@ class EventFormattingHelper(object):
   """Output module event formatting helper."""
 
   @abc.abstractmethod
-  def GetFormattedEvent(
+  def GetFieldValues(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
-    """Retrieves a string representation of the event.
+    """Retrieves the output field values.
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
@@ -31,7 +31,7 @@ class EventFormattingHelper(object):
       event_tag (EventTag): event tag.
 
     Returns:
-      str: string representation of the event.
+      list[str]: output field values.
     """
 
 
@@ -179,9 +179,6 @@ class FieldFormattingHelper(object):
     display_name = getattr(event_data, 'display_name', None)
     if not display_name:
       path_spec = getattr(event_data_stream, 'path_spec', None)
-      if not path_spec:
-        path_spec = getattr(event_data, 'pathspec', None)
-
       if path_spec:
         display_name = output_mediator.GetDisplayNameForPathSpec(path_spec)
       else:
@@ -209,9 +206,6 @@ class FieldFormattingHelper(object):
     filename = getattr(event_data, 'filename', None)
     if not filename:
       path_spec = getattr(event_data_stream, 'path_spec', None)
-      if not path_spec:
-        path_spec = getattr(event_data, 'pathspec', None)
-
       if path_spec:
         filename = output_mediator.GetRelativePathForPathSpec(path_spec)
       else:
@@ -253,11 +247,6 @@ class FieldFormattingHelper(object):
     # Note that inode can contain 0.
     if inode is None:
       path_specification = getattr(event_data_stream, 'path_spec', None)
-      if not path_specification:
-        # Note that support for event_data.pathspec is kept for backwards
-        # compatibility.
-        path_specification = getattr(event_data, 'pathspec', None)
-
       if path_specification:
         if path_specification.type_indicator in (
             dfvfs_definitions.TYPE_INDICATOR_APFS,
@@ -314,8 +303,6 @@ class FieldFormattingHelper(object):
     Raises:
       NoFormatterFound: if no message formatter can be found to match the data
           type in the event data.
-      WrongFormatter: if the event data cannot be formatted by the message
-          formatter.
     """
     message_formatter = output_mediator.GetMessageFormatter(
         event_data.data_type)
@@ -346,8 +333,6 @@ class FieldFormattingHelper(object):
     Raises:
       NoFormatterFound: if no message formatter can be found to match the data
           type in the event data.
-      WrongFormatter: if the event data cannot be formatted by the message
-          formatter.
     """
     message_formatter = output_mediator.GetMessageFormatter(
         event_data.data_type)

@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""This file contains the output module interface classes."""
+"""This file contains the output module interface class."""
 
 import abc
-import os
 
 from plaso.lib import errors
 from plaso.output import logger
@@ -23,6 +22,36 @@ class OutputModule(object):
   # Value to indicate the output module writes to an output file.
   WRITES_OUTPUT_FILE = False
 
+<<<<<<< HEAD
+=======
+  @abc.abstractmethod
+  def _GetFieldValues(
+      self, output_mediator, event, event_data, event_data_stream, event_tag):
+    """Retrieves the output field values.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      event (EventObject): event.
+      event_data (EventData): event data.
+      event_data_stream (EventDataStream): event data stream.
+      event_tag (EventTag): event tag.
+
+    Returns:
+      dict[str, str]: output field values per name.
+    """
+
+  @abc.abstractmethod
+  def _WriteFieldValues(self, output_mediator, field_values):
+    """Writes field values to the output.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      field_values (dict[str, str]): output field values per name.
+    """
+
+>>>>>>> origin/main
   def _ReportEventError(self, event, event_data, error_message):
     """Reports an event related error.
 
@@ -59,9 +88,15 @@ class OutputModule(object):
     """Opens the output."""
     return
 
+<<<<<<< HEAD
   def WriteEvent(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
     """Writes the event to the output.
+=======
+  def WriteFieldValues(
+      self, output_mediator, event, event_data, event_data_stream, event_tag):
+    """Writes field values to the output.
+>>>>>>> origin/main
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
@@ -72,7 +107,11 @@ class OutputModule(object):
       event_tag (EventTag): event tag.
     """
     try:
+<<<<<<< HEAD
       self.WriteEventBody(
+=======
+      field_values = self._GetFieldValues(
+>>>>>>> origin/main
           output_mediator, event, event_data, event_data_stream, event_tag)
 
     except errors.NoFormatterFound as exception:
@@ -80,18 +119,22 @@ class OutputModule(object):
           exception)
       self._ReportEventError(event, event_data, error_message)
 
-    except errors.WrongFormatter as exception:
-      error_message = 'wrong formatter with error: {0!s}'.format(exception)
-      self._ReportEventError(event, event_data, error_message)
+    self._WriteFieldValues(output_mediator, field_values)
 
+<<<<<<< HEAD
   @abc.abstractmethod
   def WriteEventBody(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
     """Writes event values to the output.
+=======
+  def WriteFieldValuesOfMACBGroup(self, output_mediator, macb_group):
+    """Writes field values of a MACB group to the output.
+>>>>>>> origin/main
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event (EventObject): event.
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
@@ -118,6 +161,14 @@ class OutputModule(object):
     """
     for event, event_data, event_data_stream, event_tag in event_macb_group:
       self.WriteEvent(
+=======
+      macb_group (list[tuple[event, event_data, event_data_stream, event_tag]]):
+          group of event, event_data, event_data_stream and event_tag objects
+          with identical timestamps, attributes and values.
+    """
+    for event, event_data, event_data_stream, event_tag in macb_group:
+      self.WriteFieldValues(
+>>>>>>> origin/main
           output_mediator, event, event_data, event_data_stream, event_tag)
 
   def WriteFooter(self):
@@ -133,6 +184,7 @@ class OutputModule(object):
 
     Can be used for pre-processing or output before the first event
     is written, such as writing a file header.
+<<<<<<< HEAD
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
@@ -217,3 +269,11 @@ class TextFileOutputModule(OutputModule):
       text (str): text to output.
     """
     self._file_object.write(text)
+=======
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+    """
+    return
+>>>>>>> origin/main

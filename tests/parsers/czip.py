@@ -23,21 +23,22 @@ class CompoundZIPTest(test_lib.ParserTestCase):
     number_of_plugins = len(parser._plugin_classes)
 
     parser.EnablePlugins([])
-    self.assertEqual(len(parser._plugins), 0)
+    self.assertEqual(len(parser._plugins_per_name), 0)
 
     parser.EnablePlugins(parser.ALL_PLUGINS)
-    self.assertEqual(len(parser._plugins), number_of_plugins)
+    self.assertEqual(len(parser._plugins_per_name), number_of_plugins)
 
     parser.EnablePlugins(['oxml'])
-    self.assertEqual(len(parser._plugins), 1)
+    self.assertEqual(len(parser._plugins_per_name), 1)
 
   def testParse(self):
     """Tests the Parse function."""
     parser = czip.CompoundZIPParser()
     storage_writer = self._ParseFile(['syslog.zip'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 0)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 0)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')

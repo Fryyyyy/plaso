@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers import safari_cookies
 
 from tests.parsers import test_lib
@@ -23,8 +22,9 @@ class SafariCookieParserTest(test_lib.ParserTestCase):
     # * 182 events from the safari cookie parser
     # * 25 event from the cookie plugins
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 207)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 106)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -34,6 +34,7 @@ class SafariCookieParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
+<<<<<<< HEAD
     events = []
     for event in storage_writer.GetEvents():
       event_data = self._GetEventDataOfEvent(storage_writer, event)
@@ -62,6 +63,8 @@ class SafariCookieParserTest(test_lib.ParserTestCase):
 
     self.CheckEventValues(storage_writer, events[48], expected_event_values)
 
+=======
+>>>>>>> origin/main
     expected_event_values = {
         'cookie_name': 'fpc',
         'cookie_value': (
@@ -70,11 +73,17 @@ class SafariCookieParserTest(test_lib.ParserTestCase):
             '6JgkFwqO5uHrv4HiL05qb.85Bl.V__HZI5wpAGOGPz1XHhY5mOMH.g.pkVDLli36W'
             '2iuYwA-&v=2'),
         'data_type': 'safari:cookie:entry',
+<<<<<<< HEAD
         'date_time': '2013-07-08T17:24:30.000000+00:00',
+=======
+        'expiration_time': '2014-07-08T05:24:29.000000+00:00',
+        'creation_time': '2013-07-08T17:24:30.000000+00:00',
+>>>>>>> origin/main
         'path': '/',
         'url': '.www.yahoo.com'}
 
-    self.CheckEventValues(storage_writer, events[52], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 26)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

@@ -52,8 +52,10 @@ class Log2TimelineToolTest(test_lib.CLIToolTestCase):
     """
     options = test_lib.TestOptions()
     options.artifact_definitions_path = self._GetTestFilePath(['artifacts'])
+    options.data_location = shared_test_lib.DATA_PATH
     options.quiet = True
     options.single_process = True
+    options.status_view_interval = 0.5
     options.status_view_mode = 'none'
     options.source = source_path
 
@@ -137,6 +139,8 @@ class Log2TimelineToolTest(test_lib.CLIToolTestCase):
     options = test_lib.TestOptions()
     options.artifact_definitions_path = test_artifacts_path
     options.source = test_file_path
+    options.status_view_interval = 0.5
+    options.status_view_mode = 'none'
     options.storage_file = 'storage.plaso'
     options.storage_format = definitions.STORAGE_FORMAT_SQLITE
     options.task_storage_format = definitions.STORAGE_FORMAT_SQLITE
@@ -540,7 +544,8 @@ class Log2TimelineToolTest(test_lib.CLIToolTestCase):
       # that support os.stat_result st_birthtime.
       expected_event_counters = {
           'fs:stat': [3, 4],
-          'pe': 3}
+          'pe_coff:dll_import': 2,
+          'pe_coff:file': 1}
 
       self.CheckEventCounters(storage_file, expected_event_counters)
 

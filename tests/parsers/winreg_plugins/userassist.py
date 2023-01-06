@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers.winreg_plugins import userassist
 
 from tests.parsers.winreg_plugins import test_lib
@@ -53,8 +52,9 @@ class UserAssistPluginTest(test_lib.RegistryPluginTestCase):
     storage_writer = self._ParseKeyWithPlugin(
         registry_key, plugin, file_entry=test_file_entry)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 14)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 14)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -64,20 +64,19 @@ class UserAssistPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'windows:registry:userassist',
+<<<<<<< HEAD
         'date_time': '2009-08-04T15:11:22.8110676+00:00',
+=======
+>>>>>>> origin/main
         'key_path': '{0:s}\\Count'.format(key_path),
+        'last_execution_time': '2009-08-04T15:11:22.8110676+00:00',
         'number_of_executions': 14,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME,
-        'timestamp_desc': definitions.TIME_DESCRIPTION_LAST_RUN,
         'value_name': 'UEME_RUNPIDL:%csidl2%\\MSN.lnk'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
   def testProcessOnWin7(self):
     """Tests the Process function on a Windows 7 Registry file."""
@@ -93,8 +92,9 @@ class UserAssistPluginTest(test_lib.RegistryPluginTestCase):
     storage_writer = self._ParseKeyWithPlugin(
         registry_key, plugin, file_entry=test_file_entry)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 61)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 61)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -104,22 +104,21 @@ class UserAssistPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'application_focus_count': 21,
         'application_focus_duration': 420000,
         'data_type': 'windows:registry:userassist',
+<<<<<<< HEAD
         'date_time': '2010-11-10T07:49:37.0780676+00:00',
+=======
+>>>>>>> origin/main
         'key_path': '{0:s}\\Count'.format(key_path),
+        'last_execution_time': '2010-11-10T07:49:37.0780676+00:00',
         'number_of_executions': 14,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME,
-        'timestamp_desc': definitions.TIME_DESCRIPTION_LAST_RUN,
         'value_name': 'Microsoft.Windows.GettingStarted'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

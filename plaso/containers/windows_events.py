@@ -3,7 +3,10 @@
 
 from dfdatetime import uuid_time as dfdatetime_uuid_time
 
+<<<<<<< HEAD
 from plaso.containers import event_registry
+=======
+>>>>>>> origin/main
 from plaso.containers import events
 from plaso.lib import definitions
 
@@ -59,6 +62,8 @@ class WindowsRegistryEventData(events.EventData):
 
   Attributes:
     key_path (str): Windows Registry key path.
+    last_written_time (dfdatetime.DateTimeValues): key last written date and
+        time.
     values (str): names and data of the values in the key.
   """
 
@@ -68,6 +73,7 @@ class WindowsRegistryEventData(events.EventData):
     """Initializes event data."""
     super(WindowsRegistryEventData, self).__init__(data_type=self.DATA_TYPE)
     self.key_path = None
+    self.last_written_time = None
     self.values = None
 
 
@@ -92,11 +98,14 @@ class WindowsShellItemFileEntryEventData(events.EventData):
 
   DATA_TYPE = 'windows:shell_item:file_entry'
 
+<<<<<<< HEAD
   ATTRIBUTE_MAPPINGS = {
       'access_time': definitions.TIME_DESCRIPTION_LAST_ACCESS,
       'creation_time': definitions.TIME_DESCRIPTION_CREATION,
       'modification_time': definitions.TIME_DESCRIPTION_MODIFICATION}
 
+=======
+>>>>>>> origin/main
   def __init__(self):
     """Initializes event data."""
     super(WindowsShellItemFileEntryEventData, self).__init__(
@@ -116,16 +125,19 @@ class WindowsVolumeEventData(events.EventData):
   """Windows volume event data attribute container.
 
   Attributes:
+    creation_time (dfdatetime.DateTimeValues): volume creation date and time.
     device_path (str): volume device path.
     origin (str): origin of the event (event source), for example
         the corresponding Prefetch file name.
     serial_number (str): volume serial number.
   """
+
   DATA_TYPE = 'windows:volume:creation'
 
   def __init__(self):
     """Initializes event data."""
     super(WindowsVolumeEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.creation_time = None
     self.device_path = None
     # TODO: replace origin with something machine readable.
     self.origin = None

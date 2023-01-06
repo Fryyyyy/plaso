@@ -8,12 +8,12 @@ from plaso.containers import events
 from plaso.containers import plist_event
 from plaso.lib import definitions
 from plaso.parsers import filestat
-from plaso.parsers import syslog
 from plaso.parsers.olecf_plugins import summary
 from plaso.parsers.plist_plugins import ipod
-from plaso.parsers.sqlite_plugins import appusage
 from plaso.parsers.sqlite_plugins import chrome_history
 from plaso.parsers.sqlite_plugins import ls_quarantine
+from plaso.parsers.sqlite_plugins import macos_appusage
+from plaso.parsers.text_plugins import syslog
 
 from tests.data import test_lib
 
@@ -32,8 +32,8 @@ class MacOSTaggingFileTest(test_lib.TaggingFileTestCase):
     # Test: data_type is 'macosx:application_usage'
     attribute_values_per_name = {}
     self._CheckTaggingRule(
-        appusage.MacOSApplicationUsageEventData, attribute_values_per_name,
-        ['application_execution'])
+        macos_appusage.MacOSApplicationUsageEventData,
+        attribute_values_per_name, ['application_execution'])
 
     # Test: data_type is 'syslog:line' AND
     #       body contains 'COMMAND=/bin/launchctl'
@@ -90,7 +90,7 @@ class MacOSTaggingFileTest(test_lib.TaggingFileTestCase):
     # Test: data_type is 'macosx:lsquarantine'
     attribute_values_per_name = {}
     self._CheckTaggingRule(
-        ls_quarantine.LsQuarantineEventData, attribute_values_per_name,
+        ls_quarantine.MacOSLSQuarantineEventData, attribute_values_per_name,
         ['file_download'])
 
     # Test: timestamp_desc is 'File Downloaded'
@@ -105,7 +105,7 @@ class MacOSTaggingFileTest(test_lib.TaggingFileTestCase):
 
     self._CheckLabels(storage_writer, [])
 
-    event.timestamp_desc = definitions.TIME_DESCRIPTION_FILE_DOWNLOADED
+    event.timestamp_desc = 'Downloaded Time'
 
     storage_writer = self._TagEvent(event, event_data, None)
 
@@ -135,8 +135,7 @@ class MacOSTaggingFileTest(test_lib.TaggingFileTestCase):
     event.timestamp = self._TEST_TIMESTAMP
     event.timestamp_desc = definitions.TIME_DESCRIPTION_UNKNOWN
 
-    summary_information = summary.OLECFSummaryInformation(None)
-    event_data = summary_information.GetEventData()
+    event_data = summary.OLECFSummaryInformationEventData()
     event_data.parser = 'olecf/olecf_summary'
 
     storage_writer = self._TagEvent(event, event_data, None)

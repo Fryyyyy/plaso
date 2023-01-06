@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
 """Fake (in-memory only) store for testing."""
 
+<<<<<<< HEAD
 import ast
 import collections
 import copy
+=======
+from acstore import fake_store as acstore_fake_store
+>>>>>>> origin/main
 
 from plaso.containers import events
-from plaso.storage import identifiers
-from plaso.storage import interface
 from plaso.storage.fake import event_heap
 
 
-class FakeStore(interface.BaseStore):
-  """Fake (in-memory only) store for testing."""
+class FakeStore(acstore_fake_store.FakeAttributeContainerStore):
+  """Fake (in-memory only) store for testing.
+
+  Attributes:
+    serialization_format (str): serialization format.
+  """
 
   _CONTAINER_TYPE_EVENT = events.EventObject.CONTAINER_TYPE
   _CONTAINER_TYPE_EVENT_TAG = events.EventTag.CONTAINER_TYPE
@@ -20,6 +26,7 @@ class FakeStore(interface.BaseStore):
   def __init__(self):
     """Initializes a fake (in-memory only) store."""
     super(FakeStore, self).__init__()
+<<<<<<< HEAD
     self._attribute_container_indexes = {}
     self._attribute_containers = {}
     self._is_open = False
@@ -181,6 +188,10 @@ class FakeStore(interface.BaseStore):
     """
     containers = self._attribute_containers.get(container_type, {})
     return len(containers)
+=======
+    self._serializers_profiler = None
+    self.serialization_format = None
+>>>>>>> origin/main
 
   def GetSortedEvents(self, time_range=None):
     """Retrieves the events in increasing chronological order.
@@ -214,27 +225,10 @@ class FakeStore(interface.BaseStore):
 
     return iter(sorted_events.PopEvents())
 
-  def HasAttributeContainers(self, container_type):
-    """Determines if a store contains a specific type of attribute container.
+  def SetSerializersProfiler(self, serializers_profiler):
+    """Sets the serializers profiler.
 
     Args:
-      container_type (str): attribute container type.
-
-    Returns:
-      bool: True if the store contains the specified type of attribute
-          containers.
+      serializers_profiler (SerializersProfiler): serializers profiler.
     """
-    containers = self._attribute_containers.get(container_type, {})
-    return bool(containers)
-
-  def Open(self, **kwargs):
-    """Opens the store.
-
-    Raises:
-      IOError: if the store is already opened.
-      OSError: if the store is already opened.
-    """
-    if self._is_open:
-      raise IOError('Store already opened.')
-
-    self._is_open = True
+    self._serializers_profiler = serializers_profiler

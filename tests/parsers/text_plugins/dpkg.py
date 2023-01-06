@@ -17,8 +17,9 @@ class DpkgTextPluginTest(test_lib.TextPluginTestCase):
     plugin = dpkg.DpkgTextPlugin()
     storage_writer = self._ParseTextFileWithPlugin(['dpkg.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,13 +29,10 @@ class DpkgTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    # TODO: sort events.
-    # events = list(storage_writer.GetSortedEvents())
-
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
+        'added_time': '2009-02-25T11:45:23',
         'body': 'conffile /etc/X11/Xsession keep',
+<<<<<<< HEAD
         'data_type': 'dpkg:line',
         'date_time': '2009-02-25T11:45:23'}
 
@@ -60,6 +58,12 @@ class DpkgTextPluginTest(test_lib.TextPluginTestCase):
         'date_time': '2016-08-09T04:57:14'}
 
     self.CheckEventValues(storage_writer, events[3], expected_event_values)
+=======
+        'data_type': 'linux:dpkg_log:entry'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   # TODO: add with time zone test.
 

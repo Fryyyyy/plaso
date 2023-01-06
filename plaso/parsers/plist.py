@@ -19,8 +19,8 @@ class PlistParser(interface.FileObjectParser):
   NAME = 'plist'
   DATA_FORMAT = 'Property list (plist) file'
 
-  # 50MB is 10x larger than any plist file seen to date.
-  _MAXIMUM_PLIST_FILE_SIZE = 50000000
+  # 50 MB is 10x larger than any plist file seen to date.
+  _MAXIMUM_FILE_SIZE = 50000000
 
   _UTF16BE_BYTE_ORDER_MARK = b'\xfe\xff'
   _UTF16LE_BYTE_ORDER_MARK = b'\xff\xfe'
@@ -83,16 +83,8 @@ class PlistParser(interface.FileObjectParser):
       WrongParser: when the file cannot be parsed.
     """
     filename = parser_mediator.GetFilename()
-    file_size = file_object.get_size()
 
-    if file_size <= 0:
-      raise errors.WrongParser(
-          'File size: {0:d} bytes is less equal 0.'.format(file_size))
-
-    if file_size > self._MAXIMUM_PLIST_FILE_SIZE:
-      raise errors.WrongParser(
-          'File size: {0:d} bytes is larger than 50 MB.'.format(file_size))
-
+    # Note that _MAXIMUM_FILE_SIZE prevents this read to become too large.
     plist_data = file_object.read()
 
     has_leading_whitespace = False
@@ -139,8 +131,8 @@ class PlistParser(interface.FileObjectParser):
 
     if not top_level_object:
       # Do not produce an extraction warning for a binary plist without a top
-      # level object.
-      if not is_binary_plist:
+      # level object or an XML plist with an empty top level object.
+      if top_level_object is None and not is_binary_plist:
         parser_mediator.ProduceExtractionWarning((
             'unable to parse XML plist file with error: missing top level '
             'object'))
@@ -160,29 +152,40 @@ class PlistParser(interface.FileObjectParser):
               filename, exception))
 
     found_matching_plugin = False
-    for plugin in self._plugins:
+    for plugin_name, plugin in self._plugins_per_name.items():
       if parser_mediator.abort:
         break
 
-      if not plugin.PLIST_PATH_FILTERS:
-        path_filter_match = True
-      else:
-        path_filter_match = False
-        for path_filter in plugin.PLIST_PATH_FILTERS:
-          if path_filter.Match(filename_lower_case):
-            path_filter_match = True
-
       file_entry = parser_mediator.GetFileEntry()
       display_name = parser_mediator.GetDisplayName(file_entry)
+      profiling_name = '/'.join([self.NAME, plugin.NAME])
 
-      if (not path_filter_match or
-          not top_level_keys.issuperset(plugin.PLIST_KEYS)):
+      parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
+      try:
+        if not plugin.PLIST_PATH_FILTERS:
+          path_filter_match = True
+        else:
+          path_filter_match = False
+          for path_filter in plugin.PLIST_PATH_FILTERS:
+            if path_filter.Match(filename_lower_case):
+              path_filter_match = True
+
+        result = (path_filter_match and
+                  top_level_keys.issuperset(plugin.PLIST_KEYS))
+
+      finally:
+        parser_mediator.SampleFormatCheckStopTiming(profiling_name)
+
+      if not result:
         logger.debug('Skipped parsing file: {0:s} with plugin: {1:s}'.format(
-            display_name, plugin.NAME))
+            display_name, plugin_name))
         continue
 
       logger.debug('Parsing file: {0:s} with plugin: {1:s}'.format(
-          display_name, plugin.NAME))
+          display_name, plugin_name))
+
+      parser_mediator.SampleStartTiming(profiling_name)
 
       try:
         plugin.UpdateChainAndProcess(
@@ -192,11 +195,21 @@ class PlistParser(interface.FileObjectParser):
       except Exception as exception:  # pylint: disable=broad-except
         parser_mediator.ProduceExtractionWarning((
             'plugin: {0:s} unable to parse plist file with error: '
-            '{1!s}').format(plugin.NAME, exception))
+            '{1!s}').format(plugin_name, exception))
+
+      finally:
+        parser_mediator.SampleStopTiming(profiling_name)
 
     if not found_matching_plugin and self._default_plugin:
-      self._default_plugin.UpdateChainAndProcess(
-          parser_mediator, top_level=top_level_object)
+      profiling_name = '/'.join([self.NAME, self._default_plugin.NAME])
+
+      parser_mediator.SampleStartTiming(profiling_name)
+
+      try:
+        self._default_plugin.UpdateChainAndProcess(
+            parser_mediator, top_level=top_level_object)
+      finally:
+        parser_mediator.SampleStopTiming(profiling_name)
 
 
 manager.ParsersManager.RegisterParser(PlistParser)

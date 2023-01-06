@@ -24,6 +24,7 @@ from plaso.lib import definitions
 class StatusView(object):
   """Processing status view."""
 
+  MODE_FILE = 'file'
   MODE_LINEAR = 'linear'
   MODE_WINDOW = 'window'
 
@@ -65,6 +66,7 @@ class StatusView(object):
     self._output_writer = output_writer
     self._source_path = None
     self._source_type = None
+    self._status_file = 'status.info'
     self._stdout_output_writer = isinstance(
         output_writer, tools.StdoutOutputWriter)
     self._storage_file_path = None
@@ -111,12 +113,15 @@ class StatusView(object):
         process_status.identifier, process_status.pid, process_status.status,
         used_memory, events, event_tags, reports])
 
-  def _AddExtractionProcessStatusTableRow(self, process_status, table_view):
+  def _AddExtractionProcessStatusTableRow(
+      self, process_status, table_view, show_events):
     """Adds an extraction process status table row.
 
     Args:
       process_status (ProcessStatus): processing status.
       table_view (CLITabularTableView): table view.
+      show_events (bool): True if number of events should be shown instead of
+          number of event data.
     """
     used_memory = self._FormatSizeInUnitsOf1024(process_status.used_memory)
 
@@ -127,18 +132,26 @@ class StatusView(object):
           process_status.number_of_produced_sources,
           process_status.number_of_produced_sources_delta)
 
-    events = ''
-    if (process_status.number_of_produced_events is not None and
-        process_status.number_of_produced_events_delta is not None):
-      events = '{0:d} ({1:d})'.format(
-          process_status.number_of_produced_events,
-          process_status.number_of_produced_events_delta)
+    events_or_event_data = ''
+    if show_events:
+      if (process_status.number_of_produced_events is not None and
+          process_status.number_of_produced_events_delta is not None):
+        events_or_event_data = '{0:d} ({1:d})'.format(
+            process_status.number_of_produced_events,
+            process_status.number_of_produced_events_delta)
+    else:
+      if (process_status.number_of_produced_event_data is not None and
+          process_status.number_of_produced_event_data_delta is not None):
+        events_or_event_data = '{0:d} ({1:d})'.format(
+            process_status.number_of_produced_event_data,
+            process_status.number_of_produced_event_data_delta)
 
     # TODO: shorten display name to fit in 80 chars and show the filename.
 
     table_view.AddRow([
         process_status.identifier, process_status.pid, process_status.status,
-        used_memory, sources, events, process_status.display_name])
+        used_memory, sources, events_or_event_data,
+        process_status.display_name])
 
   def _ClearScreen(self):
     """Clears the terminal/console screen."""
@@ -255,6 +268,26 @@ class StatusView(object):
 
     return path_spec_string
 
+  def _PrintAnalysisStatusUpdateFile(self, processing_status):
+    """Prints an analysis status update in file mode.
+
+    Args:
+      processing_status (ProcessingStatus): processing status.
+    """
+    if processing_status and processing_status.events_status:
+      events_status = processing_status.events_status
+
+      with open(self._status_file, 'w', encoding='utf-8') as file_object:
+        status_line = (
+            'Events: Filtered: {0:d} In time slice: {1:d} Duplicates: {2:d} '
+            'MACB grouped: {3:d} Total: {4:d}\n').format(
+                events_status.number_of_filtered_events,
+                events_status.number_of_events_from_time_slice,
+                events_status.number_of_duplicate_events,
+                events_status.number_of_macb_grouped_events,
+                events_status.total_number_of_events)
+        file_object.write(status_line)
+
   def _PrintAnalysisStatusUpdateLinear(self, processing_status):
     """Prints an analysis status update in linear mode.
 
@@ -318,6 +351,26 @@ class StatusView(object):
       # We need to explicitly flush stdout to prevent partial status updates.
       sys.stdout.flush()
 
+  def _PrintExtractionStatusUpdateFile(self, processing_status):
+    """Prints an extraction status update in file mode.
+
+    Args:
+      processing_status (ProcessingStatus): processing status.
+    """
+    if processing_status and processing_status.tasks_status:
+      tasks_status = processing_status.tasks_status
+
+      with open(self._status_file, 'w', encoding='utf-8') as file_object:
+        status_line = (
+            'Tasks: Queued: {0:d} Processing: {1:d} Merging: {2:d} Abandoned: '
+            '{3:d} Total: {4:d}\n').format(
+                tasks_status.number_of_queued_tasks,
+                tasks_status.number_of_tasks_processing,
+                tasks_status.number_of_tasks_pending_merge,
+                tasks_status.number_of_abandoned_tasks,
+                tasks_status.total_number_of_tasks)
+        file_object.write(status_line)
+
   def _PrintExtractionStatusUpdateLinear(self, processing_status):
     """Prints an extraction status update in linear mode.
 
@@ -329,18 +382,19 @@ class StatusView(object):
         'Processing time: {0:s}\n'.format(processing_time))
 
     status_line = (
-        '{0:s} (PID: {1:d}) status: {2:s}, events produced: {3:d}, file: '
-        '{4:s}\n').format(
+        '{0:s} (PID: {1:d}) status: {2:s}, event data produced: {3:d}, events '
+        'produced: {4:d}, file: {5:s}\n').format(
             processing_status.foreman_status.identifier,
             processing_status.foreman_status.pid,
             processing_status.foreman_status.status,
+            processing_status.foreman_status.number_of_produced_event_data,
             processing_status.foreman_status.number_of_produced_events,
             processing_status.foreman_status.display_name)
     self._output_writer.Write(status_line)
 
     for worker_status in processing_status.workers_status:
       status_line = (
-          '{0:s} (PID: {1:d}) status: {2:s}, events produced: {3:d}, file: '
+          '{0:s} (PID: {1:d}) status: {2:s}, event data produced: {3:d}, file: '
           '{4:s}\n').format(
               worker_status.identifier, worker_status.pid, worker_status.status,
               worker_status.number_of_produced_events,
@@ -358,21 +412,35 @@ class StatusView(object):
     if self._stdout_output_writer:
       self._ClearScreen()
 
+    workers_status = processing_status.workers_status
+
+    show_events = bool(
+        processing_status.foreman_status.number_of_produced_events and
+        not workers_status)
+
     output_text = 'plaso - {0:s} version {1:s}\n\n'.format(
         self._tool_name, plaso.__version__)
     self._output_writer.Write(output_text)
 
     self.PrintExtractionStatusHeader(processing_status)
 
-    table_view = views.CLITabularTableView(column_names=[
-        'Identifier', 'PID', 'Status', 'Memory', 'Sources', 'Events',
-        'File'], column_sizes=[15, 7, 15, 15, 15, 15, 0])
+    if show_events:
+      column_name = [
+          'Identifier', 'PID', 'Status', 'Memory', 'Sources', 'Events', 'File']
+    else:
+      column_name = [
+          'Identifier', 'PID', 'Status', 'Memory', 'Sources', 'Event Data',
+          'File']
+
+    table_view = views.CLITabularTableView(
+        column_names=column_name, column_sizes=[15, 7, 15, 15, 15, 15, 0])
 
     self._AddExtractionProcessStatusTableRow(
-        processing_status.foreman_status, table_view)
+        processing_status.foreman_status, table_view, show_events)
 
-    for worker_status in processing_status.workers_status:
-      self._AddExtractionProcessStatusTableRow(worker_status, table_view)
+    for worker_status in workers_status:
+      self._AddExtractionProcessStatusTableRow(
+          worker_status, table_view, show_events)
 
     table_view.Write(self._output_writer)
     self._output_writer.Write('\n')
@@ -440,6 +508,9 @@ class StatusView(object):
     Returns:
       function: status update callback function or None if not available.
     """
+    if self._mode == self.MODE_FILE:
+      return self._PrintAnalysisStatusUpdateFile
+
     if self._mode == self.MODE_LINEAR:
       return self._PrintAnalysisStatusUpdateLinear
 
@@ -454,6 +525,9 @@ class StatusView(object):
     Returns:
       function: status update callback function or None if not available.
     """
+    if self._mode == self.MODE_FILE:
+      return self._PrintExtractionStatusUpdateFile
+
     if self._mode == self.MODE_LINEAR:
       return self._PrintExtractionStatusUpdateLinear
 
@@ -537,6 +611,14 @@ class StatusView(object):
       mode (str): status view mode.
     """
     self._mode = mode
+
+  def SetStatusFile(self, path):
+    """Sets the status file.
+
+    Args:
+      path (str): path of the status file.
+    """
+    self._status_file = path
 
   def SetSourceInformation(
       self, source_path, source_type, artifact_filters=None, filter_file=None):

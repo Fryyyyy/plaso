@@ -1,13 +1,35 @@
 # -*- coding: utf-8 -*-
 """Windows Registry plugin related functions and classes for testing."""
 
+from dfvfs.path import fake_path_spec
+
 from dfwinreg import fake as dfwinreg_fake
 from dfwinreg import regf as dfwinreg_regf
 from dfwinreg import registry as dfwinreg_registry
 
-from plaso.storage.fake import writer as fake_writer
+from plaso.containers import events
+from plaso.parsers import mediator as parsers_mediator
 
 from tests.parsers import test_lib
+
+
+class TestFileEntry(object):
+  """File entry object for testing purposes.
+
+  Attributes:
+    name (str): name of the file entry.
+    path_spec (dfvfs.PathSpec): path specification of the file entry.
+  """
+
+  def __init__(self, name):
+    """Initializes a file entry.
+
+    Args:
+      name (str): the file entry name.
+    """
+    super(TestFileEntry, self).__init__()
+    self.name = name
+    self.path_spec = fake_path_spec.FakePathSpec(location=name)
 
 
 class RegistryPluginTestCase(test_lib.ParserTestCase):
@@ -84,7 +106,7 @@ class RegistryPluginTestCase(test_lib.ParserTestCase):
 
   def _ParseKeyWithPlugin(
       self, registry_key, plugin, file_entry=None, knowledge_base_values=None,
-      parser_chain=None, timezone='UTC'):
+      time_zone_string='UTC'):
     """Parses a key within a Windows Registry file using the plugin.
 
     Args:
@@ -92,35 +114,39 @@ class RegistryPluginTestCase(test_lib.ParserTestCase):
       plugin (WindowsRegistryPlugin): Windows Registry plugin.
       file_entry (Optional[dfvfs.FileEntry]): file entry.
       knowledge_base_values (Optional[dict[str, str]]): knowledge base values.
-      parser_chain (Optional[str]): parsing chain up to this point.
-      timezone (Optional[str]): timezone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
       FakeStorageWriter: storage writer.
+
+    Raises:
+      SkipTest: if the path inside the test data directory does not exist and
+          the test should be skipped.
     """
     self.assertIsNotNone(registry_key)
 
-    storage_writer = fake_writer.FakeStorageWriter()
-    storage_writer.Open()
+    # TODO: move knowledge base time_zone_string into knowledge_base_values.
+    knowledge_base_object = self._CreateKnowledgeBase(
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
 
-    parser_mediator = self._CreateParserMediator(
-        storage_writer, file_entry=file_entry,
-        knowledge_base_values=knowledge_base_values, timezone=timezone)
+    parser_mediator = parsers_mediator.ParserMediator(knowledge_base_object)
 
-    # Most tests aren't explicitly checking for parser chain values,
-    # or setting them, so we'll just append the plugin name if no explicit
-    # parser chain argument is supplied.
-    if parser_chain is None:
-      # AppendToParserChain needs to be run after SetFileEntry.
-      parser_mediator.AppendToParserChain(plugin.NAME)
+    storage_writer = self._CreateStorageWriter()
+    parser_mediator.SetStorageWriter(storage_writer)
 
-    else:
-      # In the rare case that a test is checking for a particular chain, we
-      # provide a way set it directly. There's no public API for this,
-      # as access to the parser chain should be very infrequent.
-      parser_mediator._parser_chain_components = parser_chain.split('/')
+    parser_mediator.SetFileEntry(file_entry)
 
-    plugin.Process(parser_mediator, registry_key)
+    if file_entry:
+      event_data_stream = events.EventDataStream()
+      event_data_stream.path_spec = file_entry.path_spec
+
+      parser_mediator.ProduceEventDataStream(event_data_stream)
+
+    # AppendToParserChain needs to be run after SetFileEntry.
+    parser_mediator.AppendToParserChain('winreg')
+
+    plugin.UpdateChainAndProcess(parser_mediator, registry_key)
 
     self._ProcessEventData(storage_writer)
 

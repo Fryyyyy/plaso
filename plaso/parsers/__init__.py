@@ -3,7 +3,6 @@
 
 from plaso.parsers import android_app_usage
 from plaso.parsers import asl
-from plaso.parsers import bash_history
 from plaso.parsers import bencode_parser
 from plaso.parsers import bodyfile
 from plaso.parsers import bsm
@@ -17,14 +16,10 @@ from plaso.parsers import filestat
 from plaso.parsers import firefox_cache
 from plaso.parsers import fish_history
 from plaso.parsers import fseventsd
-from plaso.parsers import gdrive_synclog
-from plaso.parsers import google_logging
-from plaso.parsers import ios_lockdownd
-from plaso.parsers import ios_sysdiag_log
 from plaso.parsers import java_idx
 from plaso.parsers import jsonl_parser
 from plaso.parsers import locate
-from plaso.parsers import mac_keychain
+from plaso.parsers import macos_keychain
 from plaso.parsers import mcafeeav
 from plaso.parsers import msiecf
 from plaso.parsers import networkminer
@@ -37,18 +32,14 @@ from plaso.parsers import pls_recall
 from plaso.parsers import postgresql
 from plaso.parsers import recycler
 from plaso.parsers import safari_cookies
-from plaso.parsers import sccm
-from plaso.parsers import skydrivelog
 from plaso.parsers import spotlight_storedb
 from plaso.parsers import sqlite
 from plaso.parsers import symantec
-from plaso.parsers import syslog
 from plaso.parsers import systemd_journal
 from plaso.parsers import text_parser
 from plaso.parsers import trendmicroav
 from plaso.parsers import utmp
 from plaso.parsers import utmpx
-from plaso.parsers import viminfo
 from plaso.parsers import windefender_history
 from plaso.parsers import winevt
 from plaso.parsers import winevtx
@@ -57,7 +48,6 @@ from plaso.parsers import winlnk
 from plaso.parsers import winprefetch
 from plaso.parsers import winreg_parser
 from plaso.parsers import winrestore
-from plaso.parsers import zsh_extended_history
 
 # Register parser plugins.
 from plaso.parsers import bencode_plugins
@@ -67,7 +57,6 @@ from plaso.parsers import jsonl_plugins
 from plaso.parsers import olecf_plugins
 from plaso.parsers import plist_plugins
 from plaso.parsers import sqlite_plugins
-from plaso.parsers import syslog_plugins
 from plaso.parsers import text_plugins
 from plaso.parsers import winreg_plugins
 

@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 """Text parser plugin for Windows Firewall Log files."""
 
-import pytz
-
 import pyparsing
 
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.lib import errors
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
@@ -20,42 +16,46 @@ class WinFirewallEventData(events.EventData):
 
   Attributes:
     action (str): action taken.
+    destination_ip (str): destination IP address.
+    destination_port (int): TCP or UDP destination port.
+    icmp_code (int): ICMP code.
+    icmp_type (int): ICMP type.
+    information (str): additional information.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
+    packet_size (int): packet size.
+    path (str): direction of the communication, which can be: SEND, RECEIVE,
+        FORWARD, and UNKNOWN.
     protocol (str): IP protocol.
     source_ip (str): source IP address.
-    dest_ip (str): destination IP address.
     source_port (int): TCP or UDP source port.
-    dest_port (int): TCP or UDP destination port.
-    size (int): size of ???
-    flags (str): TCP flags.
-    tcp_seq (int): TCP sequence number.
-    tcp_ack (int): TCP ACK ???
-    tcp_win (int): TCP window size ???
-    icmp_type (int): ICMP type.
-    icmp_code (int): ICMP code.
-    info (str): ???
-    path (str): ???
+    tcp_ack (int): TCP acknowledgement number.
+    tcp_flags (str): TCP flags.
+    tcp_sequence_number (int): TCP sequence number.
+    tcp_window_size (int): TCP window size.
   """
 
-  DATA_TYPE = 'windows:firewall:log_entry'
+  DATA_TYPE = 'windows:firewall_log:entry'
 
   def __init__(self):
     """Initializes event data."""
     super(WinFirewallEventData, self).__init__(data_type=self.DATA_TYPE)
     self.action = None
-    self.dest_ip = None
-    self.dest_port = None
-    self.flags = None
+    self.destination_ip = None
+    self.destination_port = None
     self.icmp_code = None
     self.icmp_type = None
-    self.info = None
+    self.information = None
+    self.last_written_time = None
+    self.packet_size = None
     self.path = None
     self.protocol = None
-    self.size = None
     self.source_ip = None
     self.source_port = None
     self.tcp_ack = None
-    self.tcp_seq = None
-    self.tcp_win = None
+    self.tcp_flags = None
+    self.tcp_sequence_number = None
+    self.tcp_window_size = None
 
 
 class WinFirewallLogTextPlugin(interface.TextPlugin):
@@ -64,138 +64,214 @@ class WinFirewallLogTextPlugin(interface.TextPlugin):
   NAME = 'winfirewall'
   DATA_FORMAT = 'Windows Firewall log file'
 
-  ENCODING = 'ascii'
+  # A Windows Firewall is encoded using the system codepage.
+  ENCODING = None
 
-  # TODO: Add support for custom field names. Currently this parser only
-  # supports the default fields, which are:
-  #   date time action protocol src-ip dst-ip src-port dst-port size
-  #   tcpflags tcpsyn tcpack tcpwin icmptype icmpcode info path
+  _TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _BLANK = pyparsing.Suppress(pyparsing.Literal('-'))
+  _FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _WORD = (
-      pyparsing.Word(pyparsing.alphanums) |
-      pyparsing.Word(pyparsing.alphanums + '-', min=2) |
-      _BLANK)
+  _DATE = pyparsing.Group(
+      _FOUR_DIGITS + pyparsing.Suppress('-') +
+      _TWO_DIGITS + pyparsing.Suppress('-') + _TWO_DIGITS)
 
-  _INTEGER = pyparsing.Word(pyparsing.nums).setParseAction(
-      text_parser.ConvertTokenToInteger) | _BLANK
+  _TIME = pyparsing.Group(
+      _TWO_DIGITS + pyparsing.Suppress(':') +
+      _TWO_DIGITS + pyparsing.Suppress(':') + _TWO_DIGITS)
 
-  _IP_ADDRESS = (
+  _ACTION = pyparsing.Word(pyparsing.alphanums + '-', min=2)
+
+  _WORD_OR_BLANK = (
+      pyparsing.Word(pyparsing.alphanums) | pyparsing.Suppress('-'))
+
+  _IP_ADDRESS_OR_BLANK = (
       pyparsing.pyparsing_common.ipv4_address |
-      pyparsing.pyparsing_common.ipv6_address | _BLANK)
+      pyparsing.pyparsing_common.ipv6_address | pyparsing.Suppress('-'))
 
-  _PORT_NUMBER = pyparsing.Word(pyparsing.nums, max=6).setParseAction(
-      text_parser.ConvertTokenToInteger) | _BLANK
+  _PORT_NUMBER_OR_BLANK = (
+      pyparsing.Word(pyparsing.nums, max=6).setParseAction(
+          lambda tokens: int(tokens[0], 10)) | pyparsing.Suppress('-'))
 
-  _LOG_LINE = (
-      text_parser.PyparsingConstants.DATE_TIME.setResultsName('date_time') +
-      _WORD.setResultsName('action') +
-      _WORD.setResultsName('protocol') +
-      _IP_ADDRESS.setResultsName('source_ip') +
-      _IP_ADDRESS.setResultsName('dest_ip') +
-      _PORT_NUMBER.setResultsName('source_port') +
-      _PORT_NUMBER.setResultsName('dest_port') +
-      _INTEGER.setResultsName('size') +
-      _WORD.setResultsName('flags') +
-      _INTEGER.setResultsName('tcp_seq') +
-      _INTEGER.setResultsName('tcp_ack') +
-      _INTEGER.setResultsName('tcp_win') +
-      _INTEGER.setResultsName('icmp_type') +
-      _INTEGER.setResultsName('icmp_code') +
-      _WORD.setResultsName('info') +
-      _WORD.setResultsName('path'))
+  _INTEGER_OR_BLANK = (
+      pyparsing.Word(pyparsing.nums).setParseAction(
+          lambda tokens: int(tokens[0], 10)) | pyparsing.Suppress('-'))
 
-  _LINE_STRUCTURES = [
-      ('comment', text_parser.PyparsingConstants.COMMENT_LINE_HASH),
-      ('logline', _LOG_LINE)]
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
-  _SUPPORTED_KEYS = frozenset([key for key, _ in _LINE_STRUCTURES])
+  _FIELDS_METADATA = (
+      pyparsing.Suppress('Fields: ') +
+      pyparsing.restOfLine().setResultsName('fields'))
+
+  _TIME_FORMAT_METADATA = (
+      pyparsing.Suppress('Time Format: ') +
+      pyparsing.restOfLine().setResultsName('time_format'))
+
+  _METADATA = (
+      _FIELDS_METADATA | _TIME_FORMAT_METADATA | pyparsing.restOfLine())
+
+  _COMMENT_LOG_LINE = pyparsing.Suppress('#') + _METADATA + _END_OF_LINE
+
+  # Version 1.5 fields:
+  # date time action protocol src-ip dst-ip src-port dst-port size tcpflags
+  # tcpsyn tcpack tcpwin icmptype icmpcode info path
+
+  _LOG_LINE_1_5 = (
+      _DATE.setResultsName('date') +
+      _TIME.setResultsName('time') +
+      _ACTION.setResultsName('action') +
+      _WORD_OR_BLANK.setResultsName('protocol') +
+      _IP_ADDRESS_OR_BLANK.setResultsName('source_ip') +
+      _IP_ADDRESS_OR_BLANK.setResultsName('destination_ip') +
+      _PORT_NUMBER_OR_BLANK.setResultsName('source_port') +
+      _PORT_NUMBER_OR_BLANK.setResultsName('destination_port') +
+      _INTEGER_OR_BLANK.setResultsName('packet_size') +
+      _WORD_OR_BLANK.setResultsName('tcp_flags') +
+      _INTEGER_OR_BLANK.setResultsName('tcp_sequence_number') +
+      _INTEGER_OR_BLANK.setResultsName('tcp_ack') +
+      _INTEGER_OR_BLANK.setResultsName('tcp_window_size') +
+      _INTEGER_OR_BLANK.setResultsName('icmp_type') +
+      _INTEGER_OR_BLANK.setResultsName('icmp_code') +
+      _WORD_OR_BLANK.setResultsName('information') +
+      _WORD_OR_BLANK.setResultsName('path') +
+      _END_OF_LINE)
+
+  # Common fields. Set results name with underscores, not hyphens because regex
+  # will not pick them up.
+
+  _LOG_LINE_STRUCTURES = {
+      'action': _ACTION.setResultsName('action'),
+      'date': _DATE.setResultsName('date'),
+      'dst-ip': _IP_ADDRESS_OR_BLANK.setResultsName('destination_ip'),
+      'dst-port': _PORT_NUMBER_OR_BLANK.setResultsName('destination_port'),
+      'icmpcode': _INTEGER_OR_BLANK.setResultsName('icmp_code'),
+      'icmptype': _INTEGER_OR_BLANK.setResultsName('icmp_type'),
+      'info': _WORD_OR_BLANK.setResultsName('information'),
+      'path': _WORD_OR_BLANK.setResultsName('path'),
+      'protocol': _WORD_OR_BLANK.setResultsName('protocol'),
+      'size': _INTEGER_OR_BLANK.setResultsName('packet_size'),
+      'src-ip': _IP_ADDRESS_OR_BLANK.setResultsName('source_ip'),
+      'src-port': _PORT_NUMBER_OR_BLANK.setResultsName('source_port'),
+      'tcpack': _INTEGER_OR_BLANK.setResultsName('tcp_ack'),
+      'tcpflags': _WORD_OR_BLANK.setResultsName('tcp_flags'),
+      'tcpsyn': _INTEGER_OR_BLANK.setResultsName('tcp_sequence_number'),
+      'tcpwin': _INTEGER_OR_BLANK.setResultsName('tcp_window_size'),
+      'time': _TIME.setResultsName('time')}
+
+  _HEADER_GRAMMAR = pyparsing.OneOrMore(_COMMENT_LOG_LINE)
+
+  _LINE_STRUCTURES = [('log_line', _LOG_LINE_1_5)]
+
+  VERIFICATION_GRAMMAR = (
+      pyparsing.ZeroOrMore(
+          pyparsing.Regex('#(Fields|Time Format|Version): .*') + _END_OF_LINE) +
+      pyparsing.Regex('#Software: Microsoft Windows Firewall') + _END_OF_LINE)
 
   def __init__(self):
     """Initializes a text parser plugin."""
     super(WinFirewallLogTextPlugin, self).__init__()
-    self._software = None
-    self._use_local_timezone = False
-    self._version = None
+    self._use_local_time = False
 
-  def _ParseCommentRecord(self, structure):
-    """Parse a comment and store appropriate attributes.
-
-    Args:
-      structure (pyparsing.ParseResults): parsed log line.
-    """
-    comment = structure[1]
-    if comment.startswith('Version'):
-      _, _, self._version = comment.partition(':')
-    elif comment.startswith('Software'):
-      _, _, self._software = comment.partition(':')
-    elif comment.startswith('Time'):
-      _, _, time_format = comment.partition(':')
-      if 'local' in time_format.lower():
-        self._use_local_timezone = True
-
-  def _ParseLogLine(self, parser_mediator, structure):
-    """Parse a single log line and produce an event object.
+  def _ParseFieldsMetadata(self, parser_mediator, fields):
+    """Parses the fields metadata and updates the log line definition to match.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
-      structure (pyparsing.ParseResults): structure of tokens derived from
-          a line of a text file.
+          and other components, such as storage and dfVFS.
+      fields (str): field definitions.
     """
-    # Ensure time_elements_tuple is not a pyparsing.ParseResults otherwise
-    # copy.deepcopy() of the dfDateTime object will fail on Python 3.8 with:
-    # "TypeError: 'str' object is not callable" due to pyparsing.ParseResults
-    # overriding __getattr__ with a function that returns an empty string when
-    # named token does not exist.
-    time_elements_structure = structure.get('date_time', None)
+    log_line_structure = pyparsing.Empty()
+    for member in fields.split(' '):
+      if not member:
+        continue
 
+      field_structure = self._LOG_LINE_STRUCTURES.get(member, None)
+      if not field_structure:
+        field_structure = self._WORD_OR_BLANK
+        parser_mediator.ProduceExtractionWarning((
+            'missing definition for field: {0:s} defaulting to '
+            'WORD_OR_BLANK').format(member))
+
+      log_line_structure += field_structure
+
+    log_line_structure += self._END_OF_LINE
+
+    self._SetLineStructures([('log_line', log_line_structure)])
+
+  def _ParseHeader(self, parser_mediator, text_reader):
+    """Parses a text-log file header.
+
+    Args:
+      parser_mediator (ParserMediator): mediates interactions between parsers
+          and other components, such as storage and dfVFS.
+      text_reader (EncodedTextReader): text reader.
+
+    Raises:
+      ParseError: when the header cannot be parsed.
+    """
     try:
-      year, month, day_of_month, hours, minutes, seconds = (
-          time_elements_structure)
+      structure_generator = self._HEADER_GRAMMAR.scanString(
+          text_reader.lines, maxMatches=1)
+      structure, start, end = next(structure_generator)
 
-      date_time = dfdatetime_time_elements.TimeElements(time_elements_tuple=(
-          year, month, day_of_month, hours, minutes, seconds))
-      date_time.is_local_time = True
+    except StopIteration:
+      structure = None
 
-    except (TypeError, ValueError):
-      parser_mediator.ProduceExtractionWarning(
-          'invalid date time value: {0!s}'.format(time_elements_structure))
-      return
+    except pyparsing.ParseException as exception:
+      raise errors.ParseError(exception)
 
+    if not structure or start != 0:
+      raise errors.ParseError('No match found.')
+
+    fields = self._GetValueFromStructure(structure, 'fields', default_value='')
+    fields = fields.strip()
+    if fields:
+      self._ParseFieldsMetadata(parser_mediator, fields)
+
+    time_format = self._GetValueFromStructure(
+        structure, 'time_format', default_value='')
+    self._use_local_time = time_format.lower() == 'local'
+
+    text_reader.SkipAhead(end)
+
+  def _ParseLogLine(self, parser_mediator, structure):
+    """Parse a single log line.
+
+    Args:
+      parser_mediator (ParserMediator): mediates interactions between parsers
+          and other components, such as storage and dfVFS.
+      structure (pyparsing.ParseResults): tokens from a parsed log line.
+    """
     event_data = WinFirewallEventData()
     event_data.action = self._GetValueFromStructure(structure, 'action')
-    event_data.dest_ip = self._GetValueFromStructure(structure, 'dest_ip')
-    event_data.dest_port = self._GetValueFromStructure(structure, 'dest_port')
-    event_data.flags = self._GetValueFromStructure(structure, 'flags')
+    event_data.destination_ip = self._GetValueFromStructure(
+        structure, 'destination_ip')
+    event_data.destination_port = self._GetValueFromStructure(
+        structure, 'destination_port')
     event_data.icmp_code = self._GetValueFromStructure(structure, 'icmp_code')
     event_data.icmp_type = self._GetValueFromStructure(structure, 'icmp_type')
-    event_data.info = self._GetValueFromStructure(structure, 'info')
+    event_data.information = self._GetValueFromStructure(
+        structure, 'information')
+    event_data.last_written_time = self._ParseTimeElements(structure)
     event_data.path = self._GetValueFromStructure(structure, 'path')
     event_data.protocol = self._GetValueFromStructure(structure, 'protocol')
-    event_data.size = self._GetValueFromStructure(structure, 'size')
+    event_data.packet_size = self._GetValueFromStructure(
+        structure, 'packet_size')
     event_data.source_ip = self._GetValueFromStructure(structure, 'source_ip')
     event_data.source_port = self._GetValueFromStructure(
         structure, 'source_port')
     event_data.tcp_ack = self._GetValueFromStructure(structure, 'tcp_ack')
-    event_data.tcp_seq = self._GetValueFromStructure(structure, 'tcp_seq')
-    event_data.tcp_win = self._GetValueFromStructure(structure, 'tcp_win')
+    event_data.tcp_flags = self._GetValueFromStructure(structure, 'tcp_flags')
+    event_data.tcp_sequence_number = self._GetValueFromStructure(
+        structure, 'tcp_sequence_number')
+    event_data.tcp_window_size = self._GetValueFromStructure(
+        structure, 'tcp_window_size')
 
-    if self._use_local_timezone:
-      time_zone = parser_mediator.timezone
-    else:
-      time_zone = pytz.UTC
-
-    event = time_events.DateTimeValuesEvent(
-        date_time, definitions.TIME_DESCRIPTION_WRITTEN, time_zone=time_zone)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+    parser_mediator.ProduceEventData(event_data)
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -204,38 +280,67 @@ class WinFirewallLogTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key not in self._SUPPORTED_KEYS:
+    self._ParseLogLine(parser_mediator, structure)
+
+  def _ParseTimeElements(self, structure):
+    """Parses date and time elements of a log line.
+
+    Args:
+      structure (pyparsing.ParseResults): tokens from a parsed log line.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value.
+
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
+    try:
+      date_elements_structure = self._GetValueFromStructure(structure, 'date')
+      time_elements_structure = self._GetValueFromStructure(structure, 'time')
+
+      year, month, day_of_month = date_elements_structure
+      hours, minutes, seconds = time_elements_structure
+
+      time_elements_tuple = (year, month, day_of_month, hours, minutes, seconds)
+
+      date_time = dfdatetime_time_elements.TimeElements(
+          time_elements_tuple=time_elements_tuple)
+      date_time.is_local_time = self._use_local_time
+
+      return date_time
+
+    except (TypeError, ValueError) as exception:
       raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
+          'Unable to parse time elements with error: {0!s}'.format(exception))
 
-    if key == 'comment':
-      self._ParseCommentRecord(structure)
+  def _ResetState(self):
+    """Resets stored values."""
+    self._use_local_time = False
 
-    elif key == 'logline':
-      self._ParseLogLine(parser_mediator, structure)
+    self._SetLineStructures(self._LINE_STRUCTURES)
 
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
-    # TODO: Examine other versions of the file format and if this parser
-    # supports them.
-    stripped_line = line.rstrip()
-    return stripped_line == '#Version: 1.5'
+    self._ResetState()
+
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(WinFirewallLogTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(WinFirewallLogTextPlugin)

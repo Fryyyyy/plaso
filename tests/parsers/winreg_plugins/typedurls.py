@@ -42,8 +42,9 @@ class MsieTypedURLsPluginTest(test_lib.RegistryPluginTestCase):
     storage_writer = self._ParseKeyWithPlugin(
         registry_key, plugin, file_entry=test_file_entry)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -53,33 +54,32 @@ class MsieTypedURLsPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
-    expected_entries = (
-        'url1: http://cnn.com/ '
-        'url2: http://twitter.com/ '
-        'url3: http://linkedin.com/ '
-        'url4: http://tweetdeck.com/ '
-        'url5: mozilla '
-        'url6: http://google.com/ '
-        'url7: http://controller.shieldbase.local/certsrv/ '
-        'url8: http://controller.shieldbase.local/ '
-        'url9: http://www.stark-research-labs.com/ '
-        'url10: http://www.adobe.com/ '
-        'url11: http://www.google.com/ '
-        'url12: http://www.firefox.com/ '
-        'url13: http://go.microsoft.com/fwlink/?LinkId=69157')
-
     expected_event_values = {
         'data_type': 'windows:registry:typedurls',
+<<<<<<< HEAD
         'date_time': '2012-03-12T21:23:53.3077499+00:00',
         'entries': expected_entries,
+=======
+        'entries': (
+            'url1: http://cnn.com/ '
+            'url2: http://twitter.com/ '
+            'url3: http://linkedin.com/ '
+            'url4: http://tweetdeck.com/ '
+            'url5: mozilla '
+            'url6: http://google.com/ '
+            'url7: http://controller.shieldbase.local/certsrv/ '
+            'url8: http://controller.shieldbase.local/ '
+            'url9: http://www.stark-research-labs.com/ '
+            'url10: http://www.adobe.com/ '
+            'url11: http://www.google.com/ '
+            'url12: http://www.firefox.com/ '
+            'url13: http://go.microsoft.com/fwlink/?LinkId=69157'),
+>>>>>>> origin/main
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2012-03-12T21:23:53.3077499+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 class TypedPathsPluginTest(test_lib.RegistryPluginTestCase):
@@ -99,8 +99,9 @@ class TypedPathsPluginTest(test_lib.RegistryPluginTestCase):
     storage_writer = self._ParseKeyWithPlugin(
         registry_key, plugin, file_entry=test_file_entry)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -110,21 +111,19 @@ class TypedPathsPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
-    expected_entries = (
-        'url1: \\\\controller')
-
     expected_event_values = {
         'data_type': 'windows:registry:typedurls',
+<<<<<<< HEAD
         'date_time': '2010-11-10T07:58:15.8116250+00:00',
         'entries': expected_entries,
+=======
+        'entries': 'url1: \\\\controller',
+>>>>>>> origin/main
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2010-11-10T07:58:15.8116250+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

@@ -9,34 +9,17 @@ from dfdatetime import posix_time as dfdatetime_posix_time
 from dfdatetime import webkit_time as dfdatetime_webkit_time
 
 from plaso.containers import events
-from plaso.containers import time_events
 from plaso.lib import errors
-from plaso.lib import definitions
 from plaso.parsers import interface
 from plaso.parsers import manager
-
-
-class ChromePreferencesClearHistoryEventData(events.EventData):
-  """Chrome history clearing event data.
-
-  Attributes:
-    message (str): message.
-  """
-
-  DATA_TYPE = 'chrome:preferences:clear_history'
-
-  def __init__(self):
-    """Initializes event data."""
-    super(ChromePreferencesClearHistoryEventData, self).__init__(
-        data_type=self.DATA_TYPE)
-    # TODO: refactor this in something more descriptive.
-    self.message = None
 
 
 class ChromeContentSettingsExceptionsEventData(events.EventData):
   """Chrome content settings exceptions event data.
 
   Attributes:
+    last_visited_time (dfdatetime.DateTimeValues): date and time the URL was
+        last visited.
     permission (str): permission.
     primary_url (str): primary URL.
     secondary_url (str): secondary URL.
@@ -48,6 +31,7 @@ class ChromeContentSettingsExceptionsEventData(events.EventData):
     """Initializes event data."""
     super(ChromeContentSettingsExceptionsEventData, self).__init__(
         data_type=self.DATA_TYPE)
+    self.last_visited_time = None
     self.permission = None
     self.primary_url = None
     self.secondary_url = None
@@ -58,6 +42,8 @@ class ChromeExtensionsAutoupdaterEventData(events.EventData):
 
   Attributes:
     message (str): message.
+    recorded_time (dfdatetime.DateTimeValues): date and time the entry
+        was recorded.
   """
 
   DATA_TYPE = 'chrome:preferences:extensions_autoupdater'
@@ -68,14 +54,17 @@ class ChromeExtensionsAutoupdaterEventData(events.EventData):
         data_type=self.DATA_TYPE)
     # TODO: refactor this in something more descriptive.
     self.message = None
+    self.recorded_time = None
 
 
 class ChromeExtensionInstallationEventData(events.EventData):
-  """Chrome Extension event data.
+  """Chrome extension event data.
 
   Attributes:
-    extension_id (str): extension identifier.
+    extension_identifier (str): extension identifier.
     extension_name (str): extension name.
+    installation_time (dfdatetime.DateTimeValues): date and time the Chrome
+        extension was installed.
     path (str): path.
   """
 
@@ -85,8 +74,9 @@ class ChromeExtensionInstallationEventData(events.EventData):
     """Initializes event data."""
     super(ChromeExtensionInstallationEventData, self).__init__(
         data_type=self.DATA_TYPE)
-    self.extension_id = None
+    self.extension_identifier = None
     self.extension_name = None
+    self.installation_time = None
     self.path = None
 
 
@@ -101,15 +91,16 @@ class ChromePreferencesParser(interface.FileObjectParser):
 
   _ENCODING = 'utf-8'
 
-  # TODO site_engagement & ssl_cert_decisions
+  # TODO: add site_engagement & ssl_cert_decisions.
   _EXCEPTIONS_KEYS = frozenset([
       'geolocation',
       'media_stream_camera',
       'media_stream_mic',
       'midi_sysex',
       'notifications',
-      'push_messaging',
-  ])
+      'push_messaging'])
+
+  _MAXIMUM_FILE_SIZE = 16 * 1024 * 1024
 
   def _ExtractExtensionInstallEvents(self, settings_dict, parser_mediator):
     """Extract extension installation events.
@@ -142,14 +133,13 @@ class ChromePreferencesParser(interface.FileObjectParser):
         continue
 
       event_data = ChromeExtensionInstallationEventData()
-      event_data.extension_id = extension_id
+      event_data.extension_identifier = extension_id
       event_data.extension_name = manifest.get('name', None)
+      event_data.installation_time = dfdatetime_webkit_time.WebKitTime(
+          timestamp=install_time)
       event_data.path = extension.get('path', None)
 
-      date_time = dfdatetime_webkit_time.WebKitTime(timestamp=install_time)
-      event = time_events.DateTimeValuesEvent(
-          date_time, definitions.TIME_DESCRIPTION_ADDED)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
+      parser_mediator.ProduceEventData(event_data)
 
   def _ExtractContentSettingsExceptions(self, exceptions_dict, parser_mediator):
     """Extracts site specific events.
@@ -169,22 +159,21 @@ class ChromePreferencesParser(interface.FileObjectParser):
         if not last_used:
           continue
 
+        timestamp = int(last_used * 1000000)
+
         # If secondary_url is '*', the permission applies to primary_url.
         # If secondary_url is a valid URL, the permission applies to
         # elements loaded from secondary_url being embedded in primary_url.
         primary_url, secondary_url = urls.split(',')
 
         event_data = ChromeContentSettingsExceptionsEventData()
+        event_data.last_visited_time = (
+            dfdatetime_posix_time.PosixTimeInMicroseconds(timestamp=timestamp))
         event_data.permission = permission
-        event_data.primary_url = primary_url
-        event_data.secondary_url = secondary_url
+        event_data.primary_url = primary_url or None
+        event_data.secondary_url = secondary_url or None
 
-        timestamp = int(last_used * 1000000)
-        date_time = dfdatetime_posix_time.PosixTimeInMicroseconds(
-            timestamp=timestamp)
-        event = time_events.DateTimeValuesEvent(
-            date_time, definitions.TIME_DESCRIPTION_LAST_VISITED)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
+        parser_mediator.ProduceEventData(event_data)
 
   def ParseFileObject(self, parser_mediator, file_object):
     """Parses a Chrome preferences file-like object.
@@ -199,34 +188,39 @@ class ChromePreferencesParser(interface.FileObjectParser):
     """
     # First pass check for initial character being open brace.
     if file_object.read(1) != b'{':
+      display_name = parser_mediator.GetDisplayName()
       raise errors.WrongParser((
-          '[{0:s}] {1:s} is not a valid Preference file, '
-          'missing opening brace.').format(
-              self.NAME, parser_mediator.GetDisplayName()))
+          '[{0:s}] {1:s} is not a valid Preference file, missing opening '
+          'brace.').format(self.NAME, display_name))
 
     file_object.seek(0, os.SEEK_SET)
+
+    # Note that _MAXIMUM_FILE_SIZE prevents this read to become too large.
     file_content = file_object.read()
 
     try:
       file_content = codecs.decode(file_content, self._ENCODING)
     except UnicodeDecodeError:
+      display_name = parser_mediator.GetDisplayName()
       raise errors.WrongParser((
-          '[{0:s}] {1:s} is not a valid Preference file, '
-          'unable to decode UTF-8.').format(
-              self.NAME, parser_mediator.GetDisplayName()))
+          '[{0:s}] {1:s} is not a valid Preference file, unable to decode '
+          'UTF-8.').format(self.NAME, display_name))
 
     # Second pass to verify it's valid JSON
     try:
       json_dict = json.loads(file_content)
+
     except ValueError as exception:
+      display_name = parser_mediator.GetDisplayName()
       raise errors.WrongParser((
           '[{0:s}] Unable to parse file {1:s} as JSON: {2!s}').format(
-              self.NAME, parser_mediator.GetDisplayName(), exception))
+              self.NAME, display_name, exception))
+
     except IOError as exception:
+      display_name = parser_mediator.GetDisplayName()
       raise errors.WrongParser((
-          '[{0:s}] Unable to open file {1:s} for parsing as'
-          'JSON: {2!s}').format(
-              self.NAME, parser_mediator.GetDisplayName(), exception))
+          '[{0:s}] Unable to open file {1:s} for parsing as JSON: '
+          '{2!s}').format(self.NAME, display_name, exception))
 
     # Third pass to verify the file has the correct keys in it for Preferences
     if not set(self.REQUIRED_KEYS).issubset(set(json_dict.keys())):
@@ -234,17 +228,17 @@ class ChromePreferencesParser(interface.FileObjectParser):
 
     extensions_setting_dict = json_dict.get('extensions')
     if not extensions_setting_dict:
-      raise errors.WrongParser(
-          '[{0:s}] {1:s} is not a valid Preference file, '
-          'does not contain extensions value.'.format(
-              self.NAME, parser_mediator.GetDisplayName()))
+      display_name = parser_mediator.GetDisplayName()
+      raise errors.WrongParser((
+          '[{0:s}] {1:s} is not a valid Preference file, does not contain '
+          'extensions value.').format(self.NAME, display_name))
 
     extensions_dict = extensions_setting_dict.get('settings')
     if not extensions_dict:
-      raise errors.WrongParser(
-          '[{0:s}] {1:s} is not a valid Preference file, '
-          'does not contain extensions settings value.'.format(
-              self.NAME, parser_mediator.GetDisplayName()))
+      display_name = parser_mediator.GetDisplayName()
+      raise errors.WrongParser((
+          '[{0:s}] {1:s} is not a valid Preference file, does not contain '
+          'extensions settings value.').format(self.NAME, display_name))
 
     extensions_autoupdate_dict = extensions_setting_dict.get('autoupdate')
     if extensions_autoupdate_dict:
@@ -256,12 +250,10 @@ class ChromePreferencesParser(interface.FileObjectParser):
 
         event_data = ChromeExtensionsAutoupdaterEventData()
         event_data.message = 'Chrome extensions autoupdater last run'
-
-        date_time = dfdatetime_webkit_time.WebKitTime(
+        event_data.recorded_time = dfdatetime_webkit_time.WebKitTime(
             timestamp=autoupdate_lastcheck)
-        event = time_events.DateTimeValuesEvent(
-            date_time, definitions.TIME_DESCRIPTION_ADDED)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
+
+        parser_mediator.ProduceEventData(event_data)
 
       autoupdate_nextcheck_timestamp = extensions_autoupdate_dict.get(
           'next_check', None)
@@ -270,12 +262,10 @@ class ChromePreferencesParser(interface.FileObjectParser):
 
         event_data = ChromeExtensionsAutoupdaterEventData()
         event_data.message = 'Chrome extensions autoupdater next run'
-
-        date_time = dfdatetime_webkit_time.WebKitTime(
+        event_data.recorded_time = dfdatetime_webkit_time.WebKitTime(
             timestamp=autoupdate_nextcheck)
-        event = time_events.DateTimeValuesEvent(
-            date_time, definitions.TIME_DESCRIPTION_ADDED)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
+
+        parser_mediator.ProduceEventData(event_data)
 
     browser_dict = json_dict.get('browser', None)
     if browser_dict and 'last_clear_browsing_data_time' in browser_dict:
@@ -287,12 +277,10 @@ class ChromePreferencesParser(interface.FileObjectParser):
 
         event_data = ChromeExtensionsAutoupdaterEventData()
         event_data.message = 'Chrome history was cleared by user'
-
-        date_time = dfdatetime_webkit_time.WebKitTime(
+        event_data.recorded_time = dfdatetime_webkit_time.WebKitTime(
             timestamp=last_clear_history)
-        event = time_events.DateTimeValuesEvent(
-            date_time, definitions.TIME_DESCRIPTION_DELETED)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
+
+        parser_mediator.ProduceEventData(event_data)
 
     self._ExtractExtensionInstallEvents(extensions_dict, parser_mediator)
 

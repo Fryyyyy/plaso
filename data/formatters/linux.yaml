@@ -1,26 +1,63 @@
 # Plaso Linux related event formatters.
 ---
 type: 'conditional'
-data_type: 'apt:history:line'
+data_type: 'linux:apt_history_log:entry'
 message:
+- '{command}:'
 - '{packages}'
-- '[{command}]'
+- '[{command_line}]'
 - '[{error}]'
 - '[{requester}]'
 short_message:
+- '{command}:'
 - '{packages}'
+short_source: 'LOG'
+source: 'APT History Log'
 ---
 type: 'conditional'
-data_type: 'dpkg:line'
+data_type: 'linux:dpkg_log:entry'
 message:
 - '{body}'
 short_message:
 - '{body}'
+short_source: 'LOG'
+source: 'dpkg log file'
 ---
+# TODO: paths is kept for backwards compatibility
 type: 'basic'
-data_type: 'linux:locate'
-message: 'Folder Paths: {paths}'
-short_message: '{paths}'
+data_type: 'linux:locate_database:entry'
+message:
+- 'Folder Path: {path}'
+- 'Folder Paths: {paths}'
+- 'Entries: {entries}'
+short_message:
+- '{path}'
+- '{paths}'
+- '{entries}'
+short_source: 'LOCATE'
+source: 'Locate Database record (updatedb)'
+---
+type: 'conditional'
+data_type: 'linux:popularity_contest_log:entry'
+message:
+- 'mru [{mru}]'
+- 'package [{package}]'
+- 'tag [{record_tag}]'
+short_message:
+- '{mru}'
+short_source: 'LOG'
+source: 'Popularity Contest Log'
+---
+type: 'conditional'
+data_type: 'linux:popularity_contest_log:session'
+message:
+- 'Session {session}'
+- 'Host identifier: {host_indentifier}'
+- '[{details}]'
+short_message:
+- 'Session {session}'
+short_source: 'LOG'
+source: 'Popularity Contest Log'
 ---
 type: 'conditional'
 data_type: 'linux:utmp:event'
@@ -52,6 +89,8 @@ short_message:
 - 'User: {username}'
 - 'PID: {pid}'
 - 'Status: {status}'
+short_source: 'LOG'
+source: 'UTMP session'
 ---
 type: 'conditional'
 data_type: 'selinux:line'
@@ -68,3 +107,5 @@ short_message:
 - ', pid: {pid}'
 - ']'
 - ' {body}'
+short_source: 'LOG'
+source: 'Audit Log'

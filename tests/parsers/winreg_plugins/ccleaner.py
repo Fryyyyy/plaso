@@ -34,8 +34,9 @@ class CCleanerRegistryPluginTest(test_lib.RegistryPluginTestCase):
     storage_writer = self._ParseKeyWithPlugin(
         registry_key, plugin, file_entry=test_file_entry)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 2)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 2)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -45,17 +46,14 @@ class CCleanerRegistryPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'ccleaner:update',
         'date_time': '2013-07-13T10:03:14',
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'update_time': '2013-07-13T10:03:14'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
     expected_configuration = (
         '(App)Cookies: True '
@@ -78,6 +76,7 @@ class CCleanerRegistryPluginTest(test_lib.RegistryPluginTestCase):
     expected_event_values = {
         'configuration': expected_configuration,
         'data_type': 'ccleaner:configuration',
+<<<<<<< HEAD
         'date_time': '2013-07-13T14:03:26.8616882+00:00',
         'key_path': key_path}
 
@@ -110,13 +109,13 @@ class CCleanerRegistryPluginTest(test_lib.RegistryPluginTestCase):
     expected_event_values = {
         'data_type': 'ccleaner:update',
         'date_time': '2013-07-13T10:03:14',
+=======
+>>>>>>> origin/main
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME,
-        'timestamp': '2013-07-13 08:03:14.000000'}
+        'last_written_time': '2013-07-13T14:03:26.8616882+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

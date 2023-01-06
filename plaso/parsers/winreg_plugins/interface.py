@@ -5,9 +5,7 @@ import abc
 
 from dfwinreg import errors as dfwinreg_errors
 
-from plaso.containers import time_events
 from plaso.containers import windows_events
-from plaso.lib import definitions
 from plaso.parsers import plugins
 
 
@@ -70,12 +68,9 @@ class WindowsRegistryKeyPathFilter(BaseWindowsRegistryKeyFilter):
       self._key_path_prefix = None
       self._key_path_suffix = None
 
-      # Handle WoW64 Windows Registry key redirection.
-      # Also see:
-      # https://msdn.microsoft.com/en-us/library/windows/desktop/
-      # ms724072%28v=vs.85%29.aspx
-      # https://msdn.microsoft.com/en-us/library/windows/desktop/
-      # aa384253(v=vs.85).aspx
+      # Handle WoW64 Windows Registry key redirection. Also see:
+      # https://msdn.microsoft.com/en-us/library/windows/desktop/ms724072%28v=vs.85%29.aspx
+      # https://msdn.microsoft.com/en-us/library/windows/desktop/aa384253(v=vs.85).aspx
       wow64_prefix = None
       for key_path_prefix in self._WOW64_PREFIXES:
         if key_path.startswith(key_path_prefix.upper()):
@@ -216,6 +211,39 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
   # parse the Windows Registry key or its values.
   FILTERS = frozenset()
 
+  def _GetValueDataFromKey(self, registry_key, value_name):
+    """Retrieves the value data from a Registry value.
+
+    Args:
+      registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
+      value_name (str): name of the value.
+
+    Returns:
+      bytes: value data or None if not available.
+    """
+    registry_value = registry_key.GetValueByName(value_name)
+    if not registry_value:
+      return None
+
+    return registry_value.data
+
+  def _GetValueFromKey(self, registry_key, value_name):
+    """Retrieves a value from the Windows Registry key.
+
+    Args:
+      registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
+      value_name (str): name of the value to retrieve.
+
+    Returns:
+      object: value data or None if no corresponding Windows Registry value
+          is available.
+    """
+    registry_value = registry_key.GetValueByName(value_name)
+    if not registry_value:
+      return None
+
+    return registry_value.GetDataAsObject()
+
   def _GetValuesFromKey(
       self, parser_mediator, registry_key, names_to_skip=None):
     """Retrieves the values from a Windows Registry key.
@@ -229,7 +257,7 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
       names_to_skip (Optional[list[str]]): names of values that should
           be skipped.
@@ -283,7 +311,7 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
       names_to_skip (Optional[list[str]]): names of values that should
           be skipped.
@@ -293,13 +321,12 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     event_data = windows_events.WindowsRegistryEventData()
     event_data.key_path = registry_key.path
+    event_data.last_written_time = registry_key.last_written_time
     event_data.values = ' '.join([
         '{0:s}: {1!s}'.format(name, value)
         for name, value in sorted(values_dict.items())]) or None
 
-    event = time_events.DateTimeValuesEvent(
-        registry_key.last_written_time, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+    parser_mediator.ProduceEventData(event_data)
 
   # pylint: disable=arguments-differ
   @abc.abstractmethod
@@ -308,7 +335,7 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
     """
 
@@ -318,7 +345,7 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
 
     Raises:
@@ -338,7 +365,7 @@ class WindowsRegistryPlugin(plugins.BasePlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
 
     Raises:

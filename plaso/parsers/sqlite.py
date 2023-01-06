@@ -367,10 +367,16 @@ class SQLiteParser(interface.FileEntryParser):
       display_name (str): display name.
       cache (SQLiteCache): cache.
     """
-    required_tables_and_column_exist = plugin.CheckRequiredTablesAndColumns(
-        database)
+    profiling_name = '/'.join([self.NAME, plugin.NAME])
 
-    if not required_tables_and_column_exist:
+    parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
+    try:
+      result = plugin.CheckRequiredTablesAndColumns(database)
+    finally:
+      parser_mediator.SampleFormatCheckStopTiming(profiling_name)
+
+    if not result:
       logger.debug('Skipped parsing file: {0:s} with plugin: {1:s}'.format(
           display_name, plugin.NAME))
       return
@@ -378,21 +384,25 @@ class SQLiteParser(interface.FileEntryParser):
     logger.debug('Parsing file: {0:s} with plugin: {1:s}'.format(
         display_name, plugin.NAME))
 
-    schema_match = plugin.CheckSchema(database)
-    if plugin.REQUIRES_SCHEMA_MATCH and not schema_match:
-      parser_mediator.ProduceExtractionWarning((
-          'plugin: {0:s} found required tables but not a matching '
-          'schema').format(plugin.NAME))
-      return
+    parser_mediator.SampleStartTiming(profiling_name)
 
     try:
-      plugin.UpdateChainAndProcess(
-          parser_mediator, cache=cache, database=database)
+      schema_match = plugin.CheckSchema(database)
+      if plugin.REQUIRES_SCHEMA_MATCH and not schema_match:
+        parser_mediator.ProduceExtractionWarning((
+            'plugin: {0:s} found required tables but not a matching '
+            'schema').format(plugin.NAME))
+      else:
+        plugin.UpdateChainAndProcess(
+            parser_mediator, cache=cache, database=database)
 
     except Exception as exception:  # pylint: disable=broad-except
       parser_mediator.ProduceExtractionWarning((
           'plugin: {0:s} unable to parse SQLite database with error: '
           '{1!s}').format(plugin.NAME, exception))
+
+    finally:
+      parser_mediator.SampleStopTiming(profiling_name)
 
   @classmethod
   def GetFormatSpecification(cls):
@@ -431,7 +441,7 @@ class SQLiteParser(interface.FileEntryParser):
     display_name = parser_mediator.GetDisplayName(file_entry)
 
     try:
-      for plugin in self._plugins:
+      for plugin in self._plugins_per_name.values():
         self._ParseFileEntryWithPlugin(
             parser_mediator, plugin, database, display_name, cache)
     finally:
@@ -458,7 +468,7 @@ class SQLiteParser(interface.FileEntryParser):
     display_name = parser_mediator.GetDisplayName(wal_file_entry)
 
     try:
-      for plugin in self._plugins:
+      for plugin in self._plugins_per_name.values():
         self._ParseFileEntryWithPlugin(
             parser_mediator, plugin, database_wal, display_name, cache)
     finally:

@@ -183,12 +183,15 @@ class Log2TimelineTool(extraction_tool.ExtractionTool):
     helpers_manager.ArgumentHelperManager.AddCommandLineArguments(
         info_group, names=['status_view'])
 
+<<<<<<< HEAD
     output_group = argument_parser.add_argument_group('output arguments')
 
     # TODO: text_prepend kept for backwards compatibility.
     helpers_manager.ArgumentHelperManager.AddCommandLineArguments(
         output_group, names=['text_prepend'])
 
+=======
+>>>>>>> origin/main
     processing_group = argument_parser.add_argument_group(
         'processing arguments')
 
@@ -302,8 +305,7 @@ class Log2TimelineTool(extraction_tool.ExtractionTool):
     # TODO: text_prepend kept for backwards compatibility.
     argument_helper_names = [
         'artifact_definitions', 'artifact_filters', 'extraction',
-        'filter_file', 'status_view', 'storage_format', 'text_prepend',
-        'yara_rules']
+        'filter_file', 'status_view', 'storage_format', 'yara_rules']
     helpers_manager.ArgumentHelperManager.ParseOptions(
         options, self, names=argument_helper_names)
 

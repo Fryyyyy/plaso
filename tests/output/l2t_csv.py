@@ -180,8 +180,51 @@ class L2TCSVTest(test_lib.OutputModuleTestCase):
        'timestamp': '2012-06-27 18:17:01',
        'timestamp_desc': definitions.TIME_DESCRIPTION_WRITTEN}]
 
-  def testWriteEventBody(self):
-    """Tests the WriteEventBody function."""
+  def testGetFieldValues(self):
+    """Tests the _GetFieldValues function."""
+    output_mediator = self._CreateOutputMediator()
+
+    formatters_directory_path = self._GetTestFilePath(['formatters'])
+    output_mediator.ReadMessageFormattersFromDirectory(
+        formatters_directory_path)
+
+    output_module = l2t_csv.L2TCSVOutputModule()
+
+    event, event_data, event_data_stream = (
+        containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
+
+    event_tag = events.EventTag()
+    event_tag.AddLabels(['Malware', 'Printed'])
+
+    expected_field_values = {
+        'date': '06/27/2012',
+        'desc': ('Reporter <CRON> PID: 8442 (pam_unix(cron:session): session '
+                 'closed for user root)'),
+        'extra': ('a_binary_field: binary; my_number: 123; '
+                  'some_additional_foo: True'),
+        'filename': 'FAKE:log/syslog.1',
+        'format': 'test_parser',
+        'host': 'ubuntu',
+        'inode': '-',
+        'MACB': 'M...',
+        'notes': 'Malware Printed',
+        'short': ('Reporter <CRON> PID: 8442 (pam_unix(cron:session): '
+                  'session closed for user root)'),
+        'source': 'FILE',
+        'sourcetype': 'Test log file',
+        'time': '18:17:01',
+        'timezone': 'UTC',
+        'type': 'Content Modification Time',
+        'user': '-',
+        'version': '2'}
+
+    field_values = output_module._GetFieldValues(
+        output_mediator, event, event_data, event_data_stream, event_tag)
+
+    self.assertEqual(field_values, expected_field_values)
+
+  def testWriteFieldValues(self):
+    """Tests the _WriteFieldValues function."""
     test_file_object = io.StringIO()
 
     output_mediator = self._CreateOutputMediator()
@@ -199,8 +242,17 @@ class L2TCSVTest(test_lib.OutputModuleTestCase):
     event_tag = events.EventTag()
     event_tag.AddLabels(['Malware', 'Printed'])
 
+<<<<<<< HEAD
     output_module.WriteEventBody(
         output_mediator, event, event_data, event_data_stream, event_tag)
+=======
+    field_values = output_module._GetFieldValues(
+        output_mediator, event, event_data, event_data_stream, event_tag)
+
+    output_module._WriteFieldValues(output_mediator, field_values)
+
+    output_module._FlushSortedStringsHeap()
+>>>>>>> origin/main
 
     expected_event_body = (
         '06/27/2012,18:17:01,UTC,M...,FILE,Test log file,Content Modification '

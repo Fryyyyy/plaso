@@ -16,7 +16,6 @@ Subpackages
    plaso.parsers.plist_plugins
    plaso.parsers.shared
    plaso.parsers.sqlite_plugins
-   plaso.parsers.syslog_plugins
    plaso.parsers.text_plugins
    plaso.parsers.winreg_plugins
 
@@ -35,14 +34,6 @@ plaso.parsers.asl module
 ------------------------
 
 .. automodule:: plaso.parsers.asl
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.bash\_history module
-----------------------------------
-
-.. automodule:: plaso.parsers.bash_history
    :members:
    :undoc-members:
    :show-inheritance:
@@ -159,42 +150,10 @@ plaso.parsers.fseventsd module
    :undoc-members:
    :show-inheritance:
 
-plaso.parsers.gdrive\_synclog module
-------------------------------------
-
-.. automodule:: plaso.parsers.gdrive_synclog
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.google\_logging module
-------------------------------------
-
-.. automodule:: plaso.parsers.google_logging
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 plaso.parsers.interface module
 ------------------------------
 
 .. automodule:: plaso.parsers.interface
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.ios\_lockdownd module
------------------------------------
-
-.. automodule:: plaso.parsers.ios_lockdownd
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.ios\_sysdiag\_log module
---------------------------------------
-
-.. automodule:: plaso.parsers.ios_sysdiag_log
    :members:
    :undoc-members:
    :show-inheritance:
@@ -231,10 +190,10 @@ plaso.parsers.logger module
    :undoc-members:
    :show-inheritance:
 
-plaso.parsers.mac\_keychain module
-----------------------------------
+plaso.parsers.macos\_keychain module
+------------------------------------
 
-.. automodule:: plaso.parsers.mac_keychain
+.. automodule:: plaso.parsers.macos_keychain
    :members:
    :undoc-members:
    :show-inheritance:
@@ -359,22 +318,6 @@ plaso.parsers.safari\_cookies module
    :undoc-members:
    :show-inheritance:
 
-plaso.parsers.sccm module
--------------------------
-
-.. automodule:: plaso.parsers.sccm
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.skydrivelog module
---------------------------------
-
-.. automodule:: plaso.parsers.skydrivelog
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 plaso.parsers.spotlight\_storedb module
 ---------------------------------------
 
@@ -395,14 +338,6 @@ plaso.parsers.symantec module
 -----------------------------
 
 .. automodule:: plaso.parsers.symantec
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.syslog module
----------------------------
-
-.. automodule:: plaso.parsers.syslog
    :members:
    :undoc-members:
    :show-inheritance:
@@ -515,14 +450,6 @@ plaso.parsers.winrestore module
 -------------------------------
 
 .. automodule:: plaso.parsers.winrestore
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.parsers.zsh\_extended\_history module
--------------------------------------------
-
-.. automodule:: plaso.parsers.zsh_extended_history
    :members:
    :undoc-members:
    :show-inheritance:

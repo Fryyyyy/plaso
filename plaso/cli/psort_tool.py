@@ -62,8 +62,9 @@ class PsortTool(
     self._deduplicate_events = True
     self._preferred_language = None
     self._process_memory_limit = None
-    self._status_view_mode = status_view.StatusView.MODE_WINDOW
     self._status_view = status_view.StatusView(self._output_writer, self.NAME)
+    self._status_view_file = 'status.info'
+    self._status_view_mode = status_view.StatusView.MODE_WINDOW
     self._time_slice = None
     self._use_time_slicer = False
 
@@ -118,12 +119,18 @@ class PsortTool(
 
     storage_file.Close()
 
+<<<<<<< HEAD
   def _CreateOutputAndFormattingProcessingConfiguration(self, text_prepend):
     """Creates an output and formatting processing configuration.
 
     Args:
       text_prepend (str): text to prepend to every display name.
 
+=======
+  def _CreateOutputAndFormattingProcessingConfiguration(self):
+    """Creates an output and formatting processing configuration.
+
+>>>>>>> origin/main
     Returns:
       ProcessingConfiguration: output and formatting processing configuration.
     """
@@ -142,7 +149,10 @@ class PsortTool(
     configuration.profiling.directory = self._profiling_directory
     configuration.profiling.profilers = self._profilers
     configuration.profiling.sample_rate = self._profiling_sample_rate
+<<<<<<< HEAD
     configuration.text_prepend = text_prepend
+=======
+>>>>>>> origin/main
 
     return configuration
 
@@ -472,6 +482,7 @@ class PsortTool(
       RuntimeError: if a non-recoverable situation is encountered.
     """
     self._status_view.SetMode(self._status_view_mode)
+    self._status_view.SetStatusFile(self._status_view_file)
     self._status_view.SetStorageFileInformation(self._storage_file_path)
 
     status_update_callback = (
@@ -482,7 +493,6 @@ class PsortTool(
     if not storage_reader:
       raise RuntimeError('Unable to create storage reader.')
 
-    text_prepend = None
     try:
       for session_index, session in enumerate(storage_reader.GetSessions()):
         self._knowledge_base.SetActiveSession(session.identifier)
@@ -498,8 +508,6 @@ class PsortTool(
           self._knowledge_base.ReadSystemConfigurationArtifact(
               system_configuration)
 
-        text_prepend = session.text_prepend
-
       self._number_of_stored_analysis_reports = (
           storage_reader.GetNumberOfAttributeContainers(
               self._CONTAINER_TYPE_ANALYSIS_REPORT))
@@ -509,8 +517,12 @@ class PsortTool(
 
     session = engine.BaseEngine.CreateSession()
 
+<<<<<<< HEAD
     configuration = self._CreateOutputAndFormattingProcessingConfiguration(
         text_prepend)
+=======
+    configuration = self._CreateOutputAndFormattingProcessingConfiguration()
+>>>>>>> origin/main
 
     # TODO: implement _CreateAnalysisProcessingConfiguration
 
@@ -528,6 +540,8 @@ class PsortTool(
       # TODO: add single process output and formatting engine support.
       output_engine = (
           multi_output_engine.OutputAndFormattingMultiProcessEngine())
+
+      output_engine.SetStatusUpdateInterval(self._status_view_interval)
 
       output_engine.ExportEvents(
           self._knowledge_base, storage_reader, self._output_module,

@@ -2,42 +2,50 @@
 """Output module for the log2timeline (L2T) CSV format.
 
 For documentation on the L2T CSV format see:
-https://forensicswiki.xyz/wiki/index.php?title=L2T_CSV
+  https://forensics.wiki/l2t_csv
 """
 
 import datetime
 import pytz
 
+from acstore.containers import interface as containers_interface
+
+from dfdatetime import interface as dfdatetime_interface
 from dfdatetime import posix_time as dfdatetime_posix_time
 
 from plaso.lib import definitions
 from plaso.lib import errors
 from plaso.output import formatting_helper
-from plaso.output import interface
 from plaso.output import logger
 from plaso.output import manager
 from plaso.output import shared_dsv
+from plaso.output import text_file
 
 
 class L2TCSVEventFormattingHelper(shared_dsv.DSVEventFormattingHelper):
   """L2T CSV output module event formatting helper."""
 
-  # pylint: disable=missing-type-doc
-  def GetFormattedEventMACBGroup(self, output_mediator, event_macb_group):
-    """Retrieves a string representation of the event.
+  def GetFormattedMACBGroup(self, output_mediator, macb_group):
+    """Retrieves a string representation of a MACB group.
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event_macb_group (list[tuple[EventObject, EventData, EventDataStream,
           EventTag]]): group of events with identical timestamps, attributes
           and values.
+=======
+      macb_group (list[tuple[event, event_data, event_data_stream, event_tag]]):
+          group of event, event_data, event_data_stream and event_tag objects
+          with identical timestamps, attributes and values.
+>>>>>>> origin/main
 
     Returns:
-      str: string representation of the event MACB group.
+      str: string representation of the MACB group.
     """
     timestamp_descriptions = [
-        event.timestamp_desc for event, _, _, _ in event_macb_group]
+        event.timestamp_desc for event, _, _, _ in macb_group]
 
     field_values = []
     for field_name in self._field_names:
@@ -48,7 +56,7 @@ class L2TCSVEventFormattingHelper(shared_dsv.DSVEventFormattingHelper):
         # TODO: fix timestamp description in source.
         field_value = '; '.join(timestamp_descriptions)
       else:
-        event, event_data, event_data_stream, event_tag = event_macb_group[0]
+        event, event_data, event_data_stream, event_tag = macb_group[0]
         field_value = self._field_formatting_helper.GetFormattedField(
             output_mediator, field_name, event, event_data, event_data_stream,
             event_tag)
@@ -59,7 +67,7 @@ class L2TCSVEventFormattingHelper(shared_dsv.DSVEventFormattingHelper):
       field_value = self._SanitizeField(field_value)
       field_values.append(field_value)
 
-    return self._field_delimiter.join(field_values)
+    return self.field_delimiter.join(field_values)
 
 
 class L2TCSVFieldFormattingHelper(formatting_helper.FieldFormattingHelper):
@@ -172,20 +180,33 @@ class L2TCSVFieldFormattingHelper(formatting_helper.FieldFormattingHelper):
 
     extra_attributes = []
     for attribute_name, attribute_value in event_data.GetAttributes():
-      if attribute_name not in formatted_attribute_names:
-        # Some parsers have written bytes values to storage.
-        if isinstance(attribute_value, bytes):
-          attribute_value = attribute_value.decode('utf-8', 'replace')
-          logger.warning(
-              'Found bytes value for attribute "{0:s}" for data type: '
-              '{1!s}. Value was converted to UTF-8: "{2:s}"'.format(
-                  attribute_name, event_data.data_type, attribute_value))
+      if attribute_name in formatted_attribute_names:
+        continue
 
-        # With ! in {1!s} we force a string conversion since some of
-        # the extra attributes values can be integer, float point or
-        # boolean values.
-        extra_attributes.append('{0:s}: {1!s}'.format(
-            attribute_name, attribute_value))
+      # Ignore attribute container identifier and date and time values.
+      if isinstance(attribute_value, (
+          containers_interface.AttributeContainerIdentifier,
+          dfdatetime_interface.DateTimeValues)):
+        continue
+
+      if (isinstance(attribute_value, list) and attribute_value and
+          isinstance(attribute_value[0],
+                     dfdatetime_interface.DateTimeValues)):
+        continue
+
+      # Some parsers have written bytes values to storage.
+      if isinstance(attribute_value, bytes):
+        attribute_value = attribute_value.decode('utf-8', 'replace')
+        logger.warning(
+            'Found bytes value for attribute "{0:s}" for data type: '
+            '{1!s}. Value was converted to UTF-8: "{2:s}"'.format(
+                attribute_name, event_data.data_type, attribute_value))
+
+      # With ! in {1!s} we force a string conversion since some of
+      # the extra attributes values can be integer, float point or
+      # boolean values.
+      extra_attributes.append('{0:s}: {1!s}'.format(
+          attribute_name, attribute_value))
 
     if event_data_stream:
       for attribute_name, attribute_value in event_data_stream.GetAttributes():
@@ -247,7 +268,7 @@ class L2TCSVFieldFormattingHelper(formatting_helper.FieldFormattingHelper):
   # pylint: enable=unused-argument
 
 
-class L2TCSVOutputModule(interface.TextFileOutputModule):
+class L2TCSVOutputModule(text_file.SortedTextFileOutputModule):
   """CSV format used by log2timeline, with 17 fixed fields."""
 
   NAME = 'l2tcsv'
@@ -258,6 +279,11 @@ class L2TCSVOutputModule(interface.TextFileOutputModule):
       'user', 'host', 'short', 'desc', 'version', 'filename', 'inode', 'notes',
       'format', 'extra']
 
+<<<<<<< HEAD
+=======
+  _SORT_KEY_FIELD_NAMES = ['time', 'filename', 'inode']
+
+>>>>>>> origin/main
   def __init__(self):
     """Initializes an output module."""
     field_formatting_helper = L2TCSVFieldFormattingHelper()
@@ -265,18 +291,47 @@ class L2TCSVOutputModule(interface.TextFileOutputModule):
         field_formatting_helper, self._FIELD_NAMES)
     super(L2TCSVOutputModule, self).__init__(event_formatting_helper)
 
+<<<<<<< HEAD
   def WriteEventMACBGroup(self, output_mediator, event_macb_group):  # pylint: disable=missing-type-doc
     """Writes an event MACB group to the output.
+=======
+  def _GetString(self, output_mediator, field_values):
+    """Retrieves an output string.
+>>>>>>> origin/main
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event_macb_group (list[tuple[EventObject, EventData, EventDataStream,
           EventTag]]): group of events with identical timestamps, attributes
           and values.
     """
     output_text = self._event_formatting_helper.GetFormattedEventMACBGroup(
         output_mediator, event_macb_group)
+=======
+      field_values (dict[str, str]): output field values per name.
+
+    Returns:
+      str: output string.
+    """
+    output_text = self._event_formatting_helper.field_delimiter.join(
+        field_values.values())
+    return ''.join([output_text, '\n'])
+
+  def WriteFieldValuesOfMACBGroup(self, output_mediator, macb_group):
+    """Writes field values of a MACB group to the output.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      macb_group (list[tuple[event, event_data, event_data_stream, event_tag]]):
+          group of event, event_data, event_data_stream and event_tag objects
+          with identical timestamps, attributes and values.
+    """
+    output_text = self._event_formatting_helper.GetFormattedMACBGroup(
+        output_mediator, macb_group)
+>>>>>>> origin/main
 
     self.WriteLine(output_text)
 

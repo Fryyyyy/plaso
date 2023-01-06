@@ -81,6 +81,44 @@ class XLSXOutputModule(interface.OutputModule):
               event.timestamp, exception))
       return 'ERROR'
 
+  def _GetFieldValues(
+      self, output_mediator, event, event_data, event_data_stream, event_tag):
+    """Retrieves the output field values.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      event (EventObject): event.
+      event_data (EventData): event data.
+      event_data_stream (EventDataStream): event data stream.
+      event_tag (EventTag): event tag.
+
+    Returns:
+      dict[str, str]: output field values per name.
+    """
+    field_values = {}
+    for field_name in self._field_names:
+      if field_name == 'datetime':
+        field_values['datetime'] = self._FormatDateTime(
+            output_mediator, event, event_data)
+        continue
+
+      field_value = self._field_formatting_helper.GetFormattedField(
+          output_mediator, field_name, event, event_data, event_data_stream,
+          event_tag)
+
+      if field_value is None and field_name in self._custom_fields:
+        field_value = self._custom_fields.get(field_name, None)
+
+      if field_value is None:
+        field_value = '-'
+      else:
+        field_value = self._SanitizeField(field_value)
+
+      field_values[field_name] = field_value
+
+    return field_values
+
   def _SanitizeField(self, field):
     """Sanitizes a field for output.
 
@@ -94,6 +132,34 @@ class XLSXOutputModule(interface.OutputModule):
       str: sanitized value of the field.
     """
     return self._ILLEGAL_XML_RE.sub('\ufffd', field)
+
+  def _WriteFieldValues(self, output_mediator, field_values):
+    """Writes field values to the output.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      field_values (dict[str, str]): output field values per name.
+    """
+    for column_index, field_name in enumerate(self._field_names):
+      field_value = field_values.get(field_name, None)
+      if field_name == 'datetime' and field_value:
+        self._sheet.write_datetime(self._current_row, column_index, field_value)
+        column_width = len(self._timestamp_format) + 2
+      else:
+        field_value = field_value or ''
+
+        self._sheet.write(self._current_row, column_index, field_value)
+        column_width = len(field_value) + 2
+
+      # Auto adjust the column width based on the length of the output value.
+      column_width = min(column_width, self._MAXIMUM_COLUMN_WIDTH)
+      column_width = max(column_width, self._MINIMUM_COLUMN_WIDTH,
+                         self._column_widths[column_index])
+
+      self._column_widths[column_index] = column_width
+
+    self._current_row += 1
 
   def Close(self):
     """Closes the workbook."""
@@ -165,13 +231,19 @@ class XLSXOutputModule(interface.OutputModule):
     """
     self._timestamp_format = timestamp_format
 
+<<<<<<< HEAD
   def WriteEventBody(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
     """Writes event values to the output.
+=======
+  def WriteHeader(self, output_mediator):
+    """Writes the header to the spreadsheet.
+>>>>>>> origin/main
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event (EventObject): event.
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
@@ -218,6 +290,9 @@ class XLSXOutputModule(interface.OutputModule):
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
     """
+=======
+    """
+>>>>>>> origin/main
     cell_format = self._workbook.add_format({'bold': True})
     cell_format.set_align('center')
 

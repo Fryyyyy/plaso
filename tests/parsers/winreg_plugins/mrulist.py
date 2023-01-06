@@ -100,9 +100,12 @@ class TestMRUListStringWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
     number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
         'event_data')
     self.assertEqual(number_of_event_data, 1)
+<<<<<<< HEAD
 
     number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
     self.assertEqual(number_of_events, 1)
+=======
+>>>>>>> origin/main
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -112,8 +115,6 @@ class TestMRUListStringWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'windows:registry:mrulist',
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
@@ -121,11 +122,10 @@ class TestMRUListStringWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
             'Index: 1 [MRU Value a]: Some random text here '
             'Index: 2 [MRU Value c]: C:/looks_legit.exe '
             'Index: 3 [MRU Value b]: c:/evil.exe'),
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 class TestMRUListShellItemListWindowsRegistryPlugin(
@@ -200,9 +200,12 @@ class TestMRUListShellItemListWindowsRegistryPlugin(
     number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
         'event_data')
     self.assertEqual(number_of_event_data, 5)
+<<<<<<< HEAD
 
     number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
     self.assertEqual(number_of_events, 5)
+=======
+>>>>>>> origin/main
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -212,30 +215,43 @@ class TestMRUListShellItemListWindowsRegistryPlugin(
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
-    # A MRUList event.
+    # MRUList event data.
     expected_event_values = {
         'data_type': 'windows:registry:mrulist',
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
         'entries': (
             'Index: 1 [MRU Value a]: Shell item path: <My Computer> '
             'C:\\Winnt\\Profiles\\Administrator\\Desktop'),
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 4)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
-    # A shell item event.
+    # Shell item event data.
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'windows:shell_item:file_entry',
         'date_time': '2011-01-14T12:03:52+00:00',
+=======
+        'access_time': None,
+        'creation_time': None,
+        'data_type': 'windows:shell_item:file_entry',
+        'modification_time': '2011-01-14T12:03:52+00:00',
+>>>>>>> origin/main
         'name': 'Winnt',
         'origin': key_path,
         'shell_item_path': '<My Computer> C:\\Winnt'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[1], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

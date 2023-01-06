@@ -2,8 +2,6 @@
 """This file contains an Outlook search MRU Registry parser."""
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.parsers import winreg_parser
 from plaso.parsers.winreg_plugins import interface
 
@@ -14,6 +12,8 @@ class OutlookSearchMRUEventData(events.EventData):
   Attributes:
     entries (str): most recently used (MRU) entries.
     key_path (str): Windows Registry key path.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
   """
 
   DATA_TYPE = 'windows:registry:outlook_search_mru'
@@ -23,6 +23,7 @@ class OutlookSearchMRUEventData(events.EventData):
     super(OutlookSearchMRUEventData, self).__init__(data_type=self.DATA_TYPE)
     self.entries = None
     self.key_path = None
+    self.last_written_time = None
 
 
 class OutlookSearchMRUPlugin(interface.WindowsRegistryPlugin):
@@ -59,7 +60,7 @@ class OutlookSearchMRUPlugin(interface.WindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
     """
     entries = []
@@ -83,10 +84,9 @@ class OutlookSearchMRUPlugin(interface.WindowsRegistryPlugin):
     event_data = OutlookSearchMRUEventData()
     event_data.entries = ' '.join(entries) or None
     event_data.key_path = registry_key.path
+    event_data.last_written_time = registry_key.last_written_time
 
-    event = time_events.DateTimeValuesEvent(
-        registry_key.last_written_time, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+    parser_mediator.ProduceEventData(event_data)
 
 
 winreg_parser.WinRegistryParser.RegisterPlugin(OutlookSearchMRUPlugin)

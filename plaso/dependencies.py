@@ -16,14 +16,20 @@ import re
 # Where version_attribute_name is either a name of an attribute,
 # property or method.
 PYTHON_DEPENDENCIES = {
+    'acstore': ('__version__', '20230101', None, True),
     'artifacts': ('__version__', '20220219', None, True),
     'bencode': ('', '', None, True),
     'certifi': ('__version__', '2016.9.26', None, True),
     'cryptography': ('__version__', '2.0.2', None, True),
     'dateutil': ('__version__', '1.5', None, True),
     'defusedxml': ('__version__', '0.5.0', None, True),
+<<<<<<< HEAD
     'dfdatetime': ('__version__', '20220925', None, True),
     'dfvfs': ('__version__', '20220917', None, True),
+=======
+    'dfdatetime': ('__version__', '20221112', None, True),
+    'dfvfs': ('__version__', '20221224', None, True),
+>>>>>>> origin/main
     'dfwinreg': ('__version__', '20211207', None, True),
     'dtfabric': ('__version__', '20220219', None, True),
     'future': ('__version__', '0.16.0', None, True),
@@ -66,7 +72,7 @@ PYTHON_DEPENDENCIES = {
     'pyvsgpt': ('get_version()', '20211115', None, True),
     'pyvshadow': ('get_version()', '20160109', None, True),
     'pyvslvm': ('get_version()', '20160109', None, True),
-    'redis': ('__version__', '3.4', '4.2', False),
+    'redis': ('__version__', '3.4', None, False),
     'requests': ('__version__', '2.18.0', None, True),
     'six': ('__version__', '1.1.0', None, True),
     'urllib3': ('__version__', '1.21.1', None, True),

@@ -85,10 +85,9 @@ class StorageReader(object):
     Returns:
       EventTag: event tag or None if the event has no event tag.
     """
-    # TODO: change GetAttributeContainers to handle identifier attributes.
     lookup_key = event_identifier.CopyToString()
-    filter_expression = '_event_row_identifier == "{0:s}"'.format(
-        lookup_key.split('.')[-1])
+    filter_expression = '_event_identifier == "{0:s}"'.format(lookup_key)
+
     event_tags = list(self.GetAttributeContainers(
         self._CONTAINER_TYPE_EVENT_TAG, filter_expression=filter_expression))
 

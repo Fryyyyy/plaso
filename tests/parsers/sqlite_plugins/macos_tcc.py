@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers.sqlite_plugins import macos_tcc
 
 from tests.parsers.sqlite_plugins import test_lib
@@ -18,8 +17,9 @@ class MacOSTCCPluginTest(test_lib.SQLitePluginTestCase):
     plugin = macos_tcc.MacOSTCCPlugin()
     storage_writer = self._ParseDatabaseFileWithPlugin(['TCC-test.db'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 21)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 21)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -29,18 +29,21 @@ class MacOSTCCPluginTest(test_lib.SQLitePluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'allowed': 1,
         'client': 'com.apple.weather',
         'data_type': 'macos:tcc_entry',
+<<<<<<< HEAD
         'date_time': '2020-05-29T12:09:51+00:00',
         'service': 'kTCCServiceUbiquity',
+=======
+        'modification_time': '2020-05-29T12:09:51+00:00',
+>>>>>>> origin/main
         'prompt_count': 1,
-        'timestamp_desc': definitions.TIME_DESCRIPTION_LAST_PROMPTED_USER}
+        'service': 'kTCCServiceUbiquity'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

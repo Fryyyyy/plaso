@@ -52,7 +52,7 @@ Test argument parser.
                         temporary files created during processing.
   --vfs_back_end TYPE, --vfs-back-end TYPE
                         The preferred dfVFS back-end: "auto", "fsext",
-                        "fshfs", "fsntfs", "tsk" or "vsgpt".
+                        "fsfat", "fshfs", "fsntfs", "tsk" or "vsgpt".
   --worker_memory_limit SIZE, --worker-memory-limit SIZE
                         Maximum amount of memory (data segment and shared
                         memory) a worker process is allowed to consume in
@@ -97,7 +97,7 @@ Test argument parser.
                         temporary files created during processing.
   --vfs_back_end TYPE, --vfs-back-end TYPE
                         The preferred dfVFS back-end: "auto", "fsext",
-                        "fshfs", "fsntfs", "tsk" or "vsgpt".
+                        "fsfat", "fshfs", "fsntfs", "tsk" or "vsgpt".
   --worker_memory_limit SIZE, --worker-memory-limit SIZE
                         Maximum amount of memory (data segment and shared
                         memory) a worker process is allowed to consume in
@@ -116,12 +116,14 @@ Test argument parser.
 """.format(test_lib.ARGPARSE_OPTIONS)
 
   _EXPECTED_TIME_ZONE_OPTION = """\
-usage: extraction_tool_test.py [--language LANGUAGE_TAG]
+usage: extraction_tool_test.py [--codepage CODEPAGE] [--language LANGUAGE_TAG]
                                [--no_extract_winevt_resources] [-z TIME_ZONE]
 
 Test argument parser.
 
 {0:s}:
+  --codepage CODEPAGE   The preferred codepage, which is used for decoding
+                        single-byte or multi-byte character extracted strings.
   --language LANGUAGE_TAG
                         The preferred language, which is used for extracting
                         and formatting Windows EventLog message strings. Use "
@@ -281,7 +283,7 @@ Test argument parser.
 
     lines = frozenset(lines)
 
-    self.assertEqual(number_of_tables, 12)
+    self.assertEqual(number_of_tables, 11)
 
     expected_line = 'filestat : Parser for file system stat information.'
     self.assertIn(expected_line, lines)
@@ -304,9 +306,6 @@ Test argument parser.
     # the table.
     expected_line = (
         'chrome_27_history : Parser for Google Chrome 27 and later history')
-    self.assertIn(expected_line, lines)
-
-    expected_line = 'ssh : Parser for SSH syslog line.'
     self.assertIn(expected_line, lines)
 
     expected_line = 'winreg_default : Parser for Windows Registry data.'

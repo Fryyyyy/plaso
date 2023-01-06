@@ -15,7 +15,7 @@ class OLECFParser(interface.FileObjectParser):
   # pylint: disable=no-member
 
   NAME = 'olecf'
-  DATA_FILE = 'OLE Compound file (OLECF)'
+  DATA_FORMAT = 'OLE Compound File (OLECF) format'
 
   _INITIAL_FILE_OFFSET = None
 
@@ -45,7 +45,7 @@ class OLECFParser(interface.FileObjectParser):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       file_object (dfvfs.FileIO): file-like object.
     """
     olecf_file = pyolecf.file()
@@ -73,20 +73,30 @@ class OLECFParser(interface.FileObjectParser):
     item_names = frozenset(item_names)
 
     try:
-      for plugin in self._plugins:
+      for plugin_name, plugin in self._plugins_per_name.items():
         if parser_mediator.abort:
           break
 
         file_entry = parser_mediator.GetFileEntry()
         display_name = parser_mediator.GetDisplayName(file_entry)
+        profiling_name = '/'.join([self.NAME, plugin.NAME])
 
-        if not plugin.REQUIRED_ITEMS.issubset(item_names):
+        parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
+        try:
+          result = plugin.REQUIRED_ITEMS.issubset(item_names)
+        finally:
+          parser_mediator.SampleFormatCheckStopTiming(profiling_name)
+
+        if not result:
           logger.debug('Skipped parsing file: {0:s} with plugin: {1:s}'.format(
-              display_name, plugin.NAME))
+              display_name, plugin_name))
           continue
 
         logger.debug('Parsing file: {0:s} with plugin: {1:s}'.format(
-            display_name, plugin.NAME))
+            display_name, plugin_name))
+
+        parser_mediator.SampleStartTiming(profiling_name)
 
         try:
           plugin.UpdateChainAndProcess(parser_mediator, root_item=root_item)
@@ -94,9 +104,16 @@ class OLECFParser(interface.FileObjectParser):
         except Exception as exception:  # pylint: disable=broad-except
           parser_mediator.ProduceExtractionWarning((
               'plugin: {0:s} unable to parse OLECF file with error: '
-              '{1!s}').format(plugin.NAME, exception))
+              '{1!s}').format(plugin_name, exception))
+
+        finally:
+          parser_mediator.SampleStopTiming(profiling_name)
 
       if self._default_plugin and not parser_mediator.abort:
+        profiling_name = '/'.join([self.NAME, self._default_plugin.NAME])
+
+        parser_mediator.SampleStartTiming(profiling_name)
+
         try:
           self._default_plugin.UpdateChainAndProcess(
               parser_mediator, root_item=root_item)
@@ -104,7 +121,10 @@ class OLECFParser(interface.FileObjectParser):
         except Exception as exception:  # pylint: disable=broad-except
           parser_mediator.ProduceExtractionWarning((
               'plugin: {0:s} unable to parse OLECF file with error: '
-              '{1!s}').format(self._default_plugin.NAME, exception))
+              '{1!s}').format(self._default_plugin_name, exception))
+
+        finally:
+          parser_mediator.SampleStopTiming(profiling_name)
 
     finally:
       olecf_file.close()

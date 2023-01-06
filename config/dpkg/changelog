@@ -1,5 +1,13 @@
+<<<<<<< HEAD
 plaso (20220930-1) unstable; urgency=low
 
   * Auto-generated
 
  -- Log2Timeline maintainers <log2timeline-maintainers@googlegroups.com>  Fri, 30 Sep 2022 06:07:30 +0200
+=======
+plaso (20221229-1) unstable; urgency=low
+
+  * Auto-generated
+
+ -- Log2Timeline maintainers <log2timeline-maintainers@googlegroups.com>  Thu, 29 Dec 2022 08:14:22 +0100
+>>>>>>> origin/main

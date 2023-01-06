@@ -2,8 +2,6 @@
 """MountPoints2 Windows Registry parser plugin."""
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.parsers import winreg_parser
 from plaso.parsers.winreg_plugins import interface
 
@@ -14,6 +12,8 @@ class MountPoints2EventData(events.EventData):
   Attributes:
     key_path (str): Windows Registry key path.
     label (str): mount point label.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
     name (str): name of the mount point source.
     server_name (str): name of the remote drive server or None if not set.
     share_name (str): name of the remote drive share or None if not set.
@@ -27,6 +27,7 @@ class MountPoints2EventData(events.EventData):
     """Initializes event data."""
     super(MountPoints2EventData, self).__init__(data_type=self.DATA_TYPE)
     self.key_path = None
+    self.last_written_time = None
     self.label = None
     self.name = None
     self.server_name = None
@@ -50,7 +51,7 @@ class MountPoints2Plugin(interface.WindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
     """
     for subkey in registry_key.GetSubkeys():
@@ -80,14 +81,13 @@ class MountPoints2Plugin(interface.WindowsRegistryPlugin):
       event_data = MountPoints2EventData()
       event_data.key_path = registry_key.path
       event_data.label = label
+      event_data.last_written_time = subkey.last_written_time
       event_data.name = name
       event_data.server_name = server_name
       event_data.share_name = share_name
       event_data.type = source_type
 
-      event = time_events.DateTimeValuesEvent(
-          subkey.last_written_time, definitions.TIME_DESCRIPTION_WRITTEN)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
+      parser_mediator.ProduceEventData(event_data)
 
 
 winreg_parser.WinRegistryParser.RegisterPlugin(MountPoints2Plugin)

@@ -17,8 +17,9 @@ class UtmpxParserTest(test_lib.ParserTestCase):
     parser = utmpx.UtmpxParser()
     storage_writer = self._ParseFile(['utmpx_mac'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 6)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 6)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,9 +29,8 @@ class UtmpxParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'mac:utmpx:event',
         'date_time': '2013-11-13T17:52:34.000000+00:00',
         'hostname': 'localhost',
@@ -43,13 +43,18 @@ class UtmpxParserTest(test_lib.ParserTestCase):
     expected_event_values = {
         'data_type': 'mac:utmpx:event',
         'date_time': '2013-11-13T17:52:41.736713+00:00',
+=======
+        'data_type': 'macos:utmpx:entry',
+>>>>>>> origin/main
         'hostname': 'localhost',
         'pid': 67,
         'terminal': 'console',
         'terminal_identifier': 65583,
         'type': 7,
-        'username': 'moxilo'}
+        'username': 'moxilo',
+        'written_time': '2013-11-13T17:52:41.736713+00:00'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[1], expected_event_values)
 
     expected_event_values = {
@@ -63,6 +68,10 @@ class UtmpxParserTest(test_lib.ParserTestCase):
         'username': 'moxilo'}
 
     self.CheckEventValues(storage_writer, events[4], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Text parser plugin related functions and classes for testing."""
 
-from dfvfs.helpers import text_file
-
-from plaso.storage.fake import writer as fake_writer
+from plaso.containers import events
+from plaso.parsers import mediator as parsers_mediator
+from plaso.parsers import text_parser
 
 from tests.parsers import test_lib
 
@@ -12,7 +12,8 @@ class TextPluginTestCase(test_lib.ParserTestCase):
   """Text parser plugin test case."""
 
   def _ParseTextFileWithPlugin(
-      self, path_segments, plugin, knowledge_base_values=None, timezone='UTC'):
+      self, path_segments, plugin, knowledge_base_values=None,
+      time_zone_string='UTC'):
     """Parses a file as a text log file and returns an event generator.
 
     This method will first test if a text log file has the required format
@@ -24,30 +25,54 @@ class TextPluginTestCase(test_lib.ParserTestCase):
       plugin (TextPlugin): text log file plugin.
       knowledge_base_values (Optional[dict[str, object]]): knowledge base
           values.
-      timezone (Optional[str]): time zone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
       FakeStorageWriter: storage writer.
+
+    Raises:
+      SkipTest: if the path inside the test data directory does not exist and
+          the test should be skipped.
     """
-    storage_writer = fake_writer.FakeStorageWriter()
-    storage_writer.Open()
+    # TODO: move knowledge base time_zone_string into knowledge_base_values.
+    knowledge_base_object = self._CreateKnowledgeBase(
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
+
+    parser_mediator = parsers_mediator.ParserMediator(knowledge_base_object)
+
+    storage_writer = self._CreateStorageWriter()
+    parser_mediator.SetStorageWriter(storage_writer)
 
     file_entry = self._GetTestFileEntry(path_segments)
-    parser_mediator = self._CreateParserMediator(
-        storage_writer, file_entry=file_entry,
-        knowledge_base_values=knowledge_base_values, timezone=timezone)
+    parser_mediator.SetFileEntry(file_entry)
+
+    if file_entry:
+      event_data_stream = events.EventDataStream()
+      event_data_stream.path_spec = file_entry.path_spec
+
+      parser_mediator.ProduceEventDataStream(event_data_stream)
+
+    # AppendToParserChain needs to be run after SetFileEntry.
+    parser_mediator.AppendToParserChain('text')
 
     file_object = file_entry.GetFileObject()
-    text_file_object = text_file.TextFile(
+    text_reader = text_parser.EncodedTextReader(
         file_object, encoding=plugin.ENCODING or parser_mediator.codepage)
 
-    required_format = plugin.CheckRequiredFormat(
-        parser_mediator, text_file_object)
+    text_reader.ReadLines()
+
+    required_format = plugin.CheckRequiredFormat(parser_mediator, text_reader)
     self.assertTrue(required_format)
 
-    parser_mediator.AppendToParserChain('text')
     plugin.UpdateChainAndProcess(parser_mediator, file_object=file_object)
 
+<<<<<<< HEAD
     self._ProcessEventData(storage_writer)
+=======
+    if hasattr(plugin, 'GetYearLessLogHelper'):
+      year_less_log_helper = plugin.GetYearLessLogHelper()
+      parser_mediator.AddYearLessLogHelper(year_less_log_helper)
+>>>>>>> origin/main
 
     return storage_writer

@@ -17,8 +17,9 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
     plugin = setupapi.SetupAPILogTextPlugin()
     storage_writer = self._ParseTextFileWithPlugin(['setupapi.dev.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 388)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 194)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,11 +29,8 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    # The order in which the text parser plugin generates events is
-    # nondeterministic hence we sort the events.
-    events = list(storage_writer.GetSortedEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'setupapi:log:line',
         'date_time': '2015-11-22T17:59:28.110'}
 
@@ -56,12 +54,18 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
     expected_event_values = {
         'data_type': 'setupapi:log:line',
         'date_time': '2016-10-12T03:36:30.998',
+=======
+        'data_type': 'setupapi:log:line',
+        'end_time': '2016-10-12T03:36:30.998',
+>>>>>>> origin/main
         'entry_type': (
             'Device Install (DiInstallDriver) - C:\\Windows\\System32'
             '\\DriverStore\\FileRepository\\prnms003.inf_x86_8f17aac186c70ea6'
             '\\prnms003.inf'),
-        'exit_status': 'SUCCESS'}
+        'exit_status': 'SUCCESS',
+        'start_time': '2016-10-12T03:36:30.936'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[57], expected_event_values)
 
     expected_event_values = {
@@ -73,6 +77,10 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
             '#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}')}
 
     self.CheckEventValues(storage_writer, events[386], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 28)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   def testProcessWithSetupLog(self):
     """Tests the Process function with setupapi.setup.log."""
@@ -80,8 +88,9 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
     storage_writer = self._ParseTextFileWithPlugin(
         ['setupapi.setup.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 32)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 16)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -91,11 +100,8 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    # The order in which the text parser plugin generates events is
-    # nondeterministic hence we sort the events.
-    events = list(storage_writer.GetSortedEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'setupapi:log:line',
         'date_time': '2015-11-22T17:53:16.599',
         'timestamp': '2015-11-22 17:53:16.599000'}
@@ -128,10 +134,16 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
     expected_event_values = {
         'data_type': 'setupapi:log:line',
         'date_time': '2015-11-22T17:57:17.502',
+=======
+        'data_type': 'setupapi:log:line',
+        'end_time': '2015-11-22T17:57:17.704',
+>>>>>>> origin/main
         'entry_type': (
             'Setup Import Driver Package - C:\\Windows\\system32'
-            '\\spool\\tools\\Microsoft XPS Document Writer\\prnms001.Inf')}
+            '\\spool\\tools\\Microsoft XPS Document Writer\\prnms001.Inf'),
+        'start_time': '2015-11-22T17:57:17.502'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[30], expected_event_values)
 
   def testProcessWithSetupLogAndTimeZone(self):
@@ -161,6 +173,10 @@ class SetupAPILogTextPluginTest(test_lib.TextPluginTestCase):
         'timestamp': '2015-11-22 16:53:16.599000'}
 
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 15)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

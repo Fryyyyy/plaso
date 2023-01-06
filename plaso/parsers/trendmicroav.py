@@ -12,8 +12,6 @@ from dfdatetime import posix_time as dfdatetime_posix_time
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.lib import errors
 from plaso.parsers import dsv_parser
 from plaso.parsers import manager
@@ -30,6 +28,8 @@ class TrendMicroAVEventData(events.EventData):
     path (str): path.
     scan_type (str): scan_type.
     threat (str): threat.
+    written_time (dfdatetime.DateTimeValues): date and time the log entry was
+        written.
   """
 
   DATA_TYPE = 'av:trendmicro:scan'
@@ -43,6 +43,7 @@ class TrendMicroAVEventData(events.EventData):
     self.path = None
     self.scan_type = None
     self.threat = None
+    self.written_time = None
 
 
 class TrendMicroUrlEventData(events.EventData):
@@ -61,7 +62,9 @@ class TrendMicroUrlEventData(events.EventData):
     policy_identifier (int): policy identifier.
     threshold (int): threshold value.
     url (str): accessed URL.
+    written_time (dfdatetime.DateTimeValues): entry written date and time.
   """
+
   DATA_TYPE = 'av:trendmicro:webrep'
 
   def __init__(self):
@@ -78,6 +81,7 @@ class TrendMicroUrlEventData(events.EventData):
     self.policy_identifier = None
     self.threshold = None
     self.url = None
+    self.written_time = None
 
 
 class TrendMicroBaseParser(dsv_parser.DSVParser):
@@ -91,11 +95,11 @@ class TrendMicroBaseParser(dsv_parser.DSVParser):
 
   DELIMITER = '<;>'
 
-  # Subclasses must define an integer MIN_COLUMNS value.
-  MIN_COLUMNS = None
-
-  # Subclasses must define a list of field names.
+  # Subclasses must define a list of column names.
   COLUMNS = ()
+
+  # Subclasses must define a minimum number of columns value.
+  _MINIMUM_NUMBER_OF_COLUMNS = None
 
   def _CreateDictReader(self, line_reader):
     """Iterates over the log lines and provide a reader for the values.
@@ -115,10 +119,10 @@ class TrendMicroBaseParser(dsv_parser.DSVParser):
       number_of_values = len(values)
       number_of_columns = len(self.COLUMNS)
 
-      if number_of_values < self.MIN_COLUMNS:
+      if number_of_values < self._MINIMUM_NUMBER_OF_COLUMNS:
         raise errors.WrongParser(
             'Expected at least {0:d} values, found {1:d}'.format(
-                self.MIN_COLUMNS, number_of_values))
+                self._MINIMUM_NUMBER_OF_COLUMNS, number_of_values))
 
       if number_of_values > number_of_columns:
         raise errors.WrongParser(
@@ -221,7 +225,8 @@ class OfficeScanVirusDetectionParser(TrendMicroBaseParser):
   COLUMNS = [
       'date', 'time', 'threat', 'action', 'scan_type', 'unused1',
       'path', 'filename', 'unused2', 'timestamp', 'unused3', 'unused4']
-  MIN_COLUMNS = 8
+
+  _MINIMUM_NUMBER_OF_COLUMNS = 8
 
   _SUPPORTED_SCAN_RESULTS = frozenset([
       0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 25])
@@ -256,11 +261,16 @@ class OfficeScanVirusDetectionParser(TrendMicroBaseParser):
     event_data.path = row['path']
     event_data.scan_type = scan_type
     event_data.threat = row['threat']
+    event_data.written_time = date_time
 
+<<<<<<< HEAD
     event = time_events.DateTimeValuesEvent(
         date_time, definitions.TIME_DESCRIPTION_WRITTEN,
         time_zone=parser_mediator.timezone)
     parser_mediator.ProduceEventWithEventData(event, event_data)
+=======
+    parser_mediator.ProduceEventData(event_data)
+>>>>>>> origin/main
 
   def VerifyRow(self, parser_mediator, row):
     """Verifies if a line of the file is in the expected format.
@@ -273,7 +283,7 @@ class OfficeScanVirusDetectionParser(TrendMicroBaseParser):
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
-    if len(row) < self.MIN_COLUMNS:
+    if len(row) < self._MINIMUM_NUMBER_OF_COLUMNS:
       return False
 
     # Check the date format!
@@ -297,6 +307,7 @@ class OfficeScanVirusDetectionParser(TrendMicroBaseParser):
 
 class OfficeScanWebReputationParser(TrendMicroBaseParser):
   """Parses the Trend Micro Office Scan Web Reputation detection log."""
+
   NAME = 'trendmicro_url'
   DATA_FORMAT = 'Trend Micro Office Web Reputation log file'
 
@@ -305,7 +316,7 @@ class OfficeScanWebReputationParser(TrendMicroBaseParser):
       'credibility_rating', 'policy_identifier', 'application_name',
       'credibility_score', 'ip', 'threshold', 'timestamp', 'unused')
 
-  MIN_COLUMNS = 12
+  _MINIMUM_NUMBER_OF_COLUMNS = 12
 
   _SUPPORTED_BLOCK_MODES = frozenset([0, 1])
 
@@ -318,12 +329,13 @@ class OfficeScanWebReputationParser(TrendMicroBaseParser):
       row_offset (int): offset of the line from which the row was extracted.
       row (dict[str, str]): fields of a single row, as specified in COLUMNS.
     """
-    timestamp = self._ParseTimestamp(parser_mediator, row)
-    if timestamp is None:
+    date_time = self._ParseTimestamp(parser_mediator, row)
+    if date_time is None:
       return
 
     event_data = TrendMicroUrlEventData()
     event_data.offset = row_offset
+    event_data.written_time = date_time
 
     # Convert and store integer values.
     for field in (
@@ -339,9 +351,7 @@ class OfficeScanWebReputationParser(TrendMicroBaseParser):
     for field in ('url', 'group_name', 'group_code', 'application_name', 'ip'):
       setattr(event_data, field, row[field])
 
-    event = time_events.DateTimeValuesEvent(
-        timestamp, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+    parser_mediator.ProduceEventData(event_data)
 
   def VerifyRow(self, parser_mediator, row):
     """Verifies if a line of the file is in the expected format.
@@ -354,11 +364,9 @@ class OfficeScanWebReputationParser(TrendMicroBaseParser):
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
-    if len(row) < self.MIN_COLUMNS:
+    if len(row) < self._MINIMUM_NUMBER_OF_COLUMNS:
       return False
 
-    # Check the date format!
-    # If it doesn't parse, then this isn't a Trend Micro AV log.
     try:
       timestamp = self._ConvertToTimestamp(row['date'], row['time'])
     except ValueError:

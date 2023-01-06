@@ -18,8 +18,9 @@ class AndroidWebViewCache(test_lib.SQLitePluginTestCase):
     storage_writer = self._ParseDatabaseFileWithPlugin(
         ['webviewCache.db'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 10)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 10)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -29,17 +30,21 @@ class AndroidWebViewCache(test_lib.SQLitePluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'content_length': 1821,
         'data_type': 'android:webviewcache',
+<<<<<<< HEAD
         'date_time': '2013-03-28T09:48:18.000+00:00',
+=======
+        'expiration_time': '2013-03-28T09:48:18.000+00:00',
+        'last_modified_time': None,
+>>>>>>> origin/main
         'url': (
             'https://apps.skypeassets.com/static/skype.skypeloginstatic/css/'
             'print.css?_version=1.15')}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

@@ -7,16 +7,13 @@ import time
 
 import pytz
 
-from dfvfs.lib import definitions as dfvfs_definitions
-
 from plaso.containers import artifacts
+from plaso.containers import events
 from plaso.containers import warnings
 from plaso.engine import path_helper
 from plaso.engine import profilers
 from plaso.helpers import language_tags
 from plaso.helpers.windows import languages
-from plaso.lib import errors
-from plaso.parsers import logger
 
 
 class ParserMediator(object):
@@ -61,28 +58,28 @@ class ParserMediator(object):
     super(ParserMediator, self).__init__()
     self._abort = False
     self._cached_parser_chain = None
-    self._cpu_time_profiler = None
+    self._event_data_stream = None
     self._event_data_stream_identifier = None
     self._extract_winevt_resources = True
     self._file_entry = None
+    self._format_checks_cpu_time_profiler = None
     self._knowledge_base = knowledge_base
     self._language_tag = self._DEFAULT_LANGUAGE_TAG
     self._last_event_data_hash = None
     self._last_event_data_identifier = None
     self._lcid = self._DEFAULT_LCID
-    self._memory_profiler = None
+    self._number_of_event_data = 0
     self._number_of_event_sources = 0
-    self._number_of_events = 0
     self._number_of_extraction_warnings = 0
     self._number_of_recovery_warnings = 0
     self._parser_chain_components = []
+    self._parsers_cpu_time_profiler = None
+    self._parsers_memory_profiler = None
     self._preferred_codepage = None
-    self._preferred_year = None
     self._process_information = None
     self._resolver_context = resolver_context
     self._storage_writer = None
     self._temporary_directory = None
-    self._text_prepend = None
     self._time_zone = None
     self._windows_event_log_providers_per_path = None
 
@@ -118,14 +115,14 @@ class ParserMediator(object):
     return self._language_tag
 
   @property
+  def number_of_produced_event_data(self):
+    """int: number of produced event data."""
+    return self._number_of_event_data
+
+  @property
   def number_of_produced_event_sources(self):
     """int: number of produced event sources."""
     return self._number_of_event_sources
-
-  @property
-  def number_of_produced_events(self):
-    """int: number of produced events."""
-    return self._number_of_events
 
   @property
   def number_of_produced_extraction_warnings(self):
@@ -150,63 +147,17 @@ class ParserMediator(object):
 
     return self._time_zone
 
-  @property
-  def year(self):
-    """int: year."""
-    return self._knowledge_base.year
+  def AddYearLessLogHelper(self, year_less_log_helper):
+    """Adds a year-less log helper.
 
-  def _GetEarliestYearFromFileEntry(self):
-    """Retrieves the year from the file entry date and time values.
-
-    This function uses the creation time if available otherwise the change
-    time (metadata last modification time) is used.
-
-    Returns:
-      int: year of the file entry or None.
+    Args:
+      year_less_log_helper (YearLessLogHelper): year-less log helper.
     """
-    file_entry = self.GetFileEntry()
-    if not file_entry:
-      return None
+    if self._event_data_stream_identifier:
+      year_less_log_helper.SetEventDataStreamIdentifier(
+          self._event_data_stream_identifier)
 
-    date_time = file_entry.creation_time
-    if not date_time:
-      date_time = file_entry.change_time
-
-    # Gzip files do not store a creation or change time, but its modification
-    # time is a good alternative.
-    if file_entry.TYPE_INDICATOR == dfvfs_definitions.TYPE_INDICATOR_GZIP:
-      date_time = file_entry.modification_time
-
-    if date_time is None:
-      logger.warning('File entry has no creation or change time.')
-      return None
-
-    year, _, _ = date_time.GetDate()
-    return year
-
-  def _GetLatestYearFromFileEntry(self):
-    """Retrieves the maximum (highest value) year from the file entry.
-
-    This function uses the modification time if available otherwise the change
-    time (metadata last modification time) is used.
-
-    Returns:
-      int: year of the file entry or None if the year cannot be retrieved.
-    """
-    file_entry = self.GetFileEntry()
-    if not file_entry:
-      return None
-
-    date_time = file_entry.modification_time
-    if not date_time:
-      date_time = file_entry.change_time
-
-    if date_time is None:
-      logger.warning('File entry has no modification or change time.')
-      return None
-
-    year, _, _ = date_time.GetDate()
-    return year
+    self._storage_writer.AddAttributeContainer(year_less_log_helper)
 
   def AddWindowsEventLogMessageFile(self, message_file):
     """Adds a Windows EventLog message file.
@@ -261,6 +212,15 @@ class ParserMediator(object):
     environment_variables = self._knowledge_base.GetEnvironmentVariables()
     return path_helper.PathHelper.ExpandWindowsPath(path, environment_variables)
 
+  def GetCurrentYear(self):
+    """Retrieves current year.
+
+    Returns:
+      int: the current year.
+    """
+    datetime_object = datetime.datetime.now()
+    return datetime_object.year
+
   def GetDisplayName(self, file_entry=None):
     """Retrieves the display name for a file entry.
 
@@ -286,8 +246,7 @@ class ParserMediator(object):
     if not relative_path:
       return file_entry.name
 
-    return path_helper.PathHelper.GetDisplayNameForPathSpec(
-        path_spec, text_prepend=self._text_prepend)
+    return path_helper.PathHelper.GetDisplayNameForPathSpec(path_spec)
 
   def GetDisplayNameForPathSpec(self, path_spec):
     """Retrieves the display name for a path specification.
@@ -298,45 +257,13 @@ class ParserMediator(object):
     Returns:
       str: human readable version of the path specification.
     """
-    return path_helper.PathHelper.GetDisplayNameForPathSpec(
-        path_spec, text_prepend=self._text_prepend)
-
-  def GetEstimatedYear(self):
-    """Retrieves an estimate of the year.
-
-    This function determines the year in the following manner:
-    * determine if the user provided a preferred year;
-    * determine if knowledge base defines a year derived from preprocessing;
-    * determine the year based on the file entry metadata;
-    * default to the current year;
-
-    Returns:
-      int: estimated year.
-    """
-    # TODO: improve this method to get a more reliable estimate.
-    # Preserve the year-less date and sort this out in the psort phase.
-    if self._preferred_year:
-      return self._preferred_year
-
-    if self._knowledge_base.year:
-      return self._knowledge_base.year
-
-    # TODO: Find a decent way to actually calculate the correct year
-    # instead of relying on file entry timestamps.
-    year = self._GetEarliestYearFromFileEntry()
-    if not year:
-      year = self._GetLatestYearFromFileEntry()
-
-    if not year:
-      year = self.GetCurrentYear()
-
-    return year
+    return path_helper.PathHelper.GetDisplayNameForPathSpec(path_spec)
 
   def GetFileEntry(self):
     """Retrieves the active file entry.
 
     Returns:
-      dfvfs.FileEntry: file entry.
+      dfvfs.FileEntry: file entry or None if not available.
     """
     return self._file_entry
 
@@ -354,30 +281,6 @@ class ParserMediator(object):
       return '{0:s}:{1:s}'.format(self._file_entry.name, data_stream)
 
     return self._file_entry.name
-
-  def GetCurrentYear(self):
-    """Retrieves current year.
-
-    Returns:
-      int: the current year.
-    """
-    datetime_object = datetime.datetime.now()
-    return datetime_object.year
-
-  def GetLatestYear(self):
-    """Retrieves the latest (newest) year for an event from a file.
-
-    This function tries to determine the year based on the file entry metadata,
-    if that fails the current year is used.
-
-    Returns:
-      int: year of the file entry or the current year.
-    """
-    year = self._GetLatestYearFromFileEntry()
-    if not year:
-      year = self.GetCurrentYear()
-
-    return year
 
   def GetParserChain(self):
     """Retrieves the current parser chain.
@@ -477,6 +380,7 @@ class ParserMediator(object):
     self._cached_parser_chain = None
     self._parser_chain_components.pop()
 
+<<<<<<< HEAD
   def ProduceEvent(self, event):
     """Produces an event.
 
@@ -503,6 +407,8 @@ class ParserMediator(object):
 
     self.last_activity_timestamp = time.time()
 
+=======
+>>>>>>> origin/main
   def ProduceEventData(self, event_data):
     """Produces event data.
 
@@ -515,7 +421,11 @@ class ParserMediator(object):
     if not self._storage_writer:
       raise RuntimeError('Storage writer not set.')
 
+<<<<<<< HEAD
     # TODO: rename this to event_data.parser_chain or equivalent.
+=======
+    # TODO: rename this to event_data._parser_chain or equivalent.
+>>>>>>> origin/main
     if not event_data.parser:
       event_data.parser = self.GetParserChain()
 
@@ -523,7 +433,16 @@ class ParserMediator(object):
       event_data.SetEventDataStreamIdentifier(
           self._event_data_stream_identifier)
 
+<<<<<<< HEAD
     self._storage_writer.AddAttributeContainer(event_data)
+=======
+    event_values_hash = events.CalculateEventValuesHash(
+        event_data, self._event_data_stream)
+    setattr(event_data, '_event_values_hash', event_values_hash)
+
+    self._storage_writer.AddAttributeContainer(event_data)
+    self._number_of_event_data += 1
+>>>>>>> origin/main
 
     self.last_activity_timestamp = time.time()
 
@@ -541,6 +460,7 @@ class ParserMediator(object):
       raise RuntimeError('Storage writer not set.')
 
     if not event_data_stream:
+      self._event_data_stream = None
       self._event_data_stream_identifier = None
     else:
       if not event_data_stream.path_spec:
@@ -549,6 +469,7 @@ class ParserMediator(object):
 
       self._storage_writer.AddAttributeContainer(event_data_stream)
 
+      self._event_data_stream = event_data_stream
       self._event_data_stream_identifier = event_data_stream.GetIdentifier()
 
     self.last_activity_timestamp = time.time()
@@ -570,6 +491,7 @@ class ParserMediator(object):
 
     self.last_activity_timestamp = time.time()
 
+<<<<<<< HEAD
   def ProduceEventWithEventData(self, event, event_data):
     """Produces an event.
 
@@ -609,6 +531,8 @@ class ParserMediator(object):
       self.parsers_counter[parser_name] += 1
     self.parsers_counter['total'] += 1
 
+=======
+>>>>>>> origin/main
   def ProduceExtractionWarning(self, message, path_spec=None):
     """Produces an extraction warning.
 
@@ -665,15 +589,33 @@ class ParserMediator(object):
     """Resets the active file entry."""
     self._file_entry = None
 
+  def SampleFormatCheckStartTiming(self, parser_name):
+    """Starts timing a CPU time sample for profiling.
+
+    Args:
+      parser_name (str): name of the parser.
+    """
+    if self._format_checks_cpu_time_profiler:
+      self._format_checks_cpu_time_profiler.StartTiming(parser_name)
+
+  def SampleFormatCheckStopTiming(self, parser_name):
+    """Stops timing a CPU time sample for profiling.
+
+    Args:
+      parser_name (str): name of the parser.
+    """
+    if self._format_checks_cpu_time_profiler:
+      self._format_checks_cpu_time_profiler.StopTiming(parser_name)
+
   def SampleMemoryUsage(self, parser_name):
     """Takes a sample of the memory usage for profiling.
 
     Args:
       parser_name (str): name of the parser.
     """
-    if self._memory_profiler:
+    if self._parsers_memory_profiler:
       used_memory = self._process_information.GetUsedMemory() or 0
-      self._memory_profiler.Sample(parser_name, used_memory)
+      self._parsers_memory_profiler.Sample(parser_name, used_memory)
 
   def SampleStartTiming(self, parser_name):
     """Starts timing a CPU time sample for profiling.
@@ -681,8 +623,8 @@ class ParserMediator(object):
     Args:
       parser_name (str): name of the parser.
     """
-    if self._cpu_time_profiler:
-      self._cpu_time_profiler.StartTiming(parser_name)
+    if self._parsers_cpu_time_profiler:
+      self._parsers_cpu_time_profiler.StartTiming(parser_name)
 
   def SampleStopTiming(self, parser_name):
     """Stops timing a CPU time sample for profiling.
@@ -690,8 +632,8 @@ class ParserMediator(object):
     Args:
       parser_name (str): name of the parser.
     """
-    if self._cpu_time_profiler:
-      self._cpu_time_profiler.StopTiming(parser_name)
+    if self._parsers_cpu_time_profiler:
+      self._parsers_cpu_time_profiler.StopTiming(parser_name)
 
   def SetExtractWinEvtResources(self, extract_winevt_resources):
     """Sets value to indicate if Windows EventLog resources should be extracted.
@@ -709,7 +651,16 @@ class ParserMediator(object):
       file_entry (dfvfs.FileEntry): file entry.
     """
     self._file_entry = file_entry
+    self._event_data_stream = None
     self._event_data_stream_identifier = None
+
+  def SetPreferredCodepage(self, codepage):
+    """Sets the preferred codepage.
+
+    Args:
+      codepage (str): codepage.
+    """
+    self._preferred_codepage = codepage
 
   def SetPreferredLanguage(self, language_tag):
     """Sets the preferred language.
@@ -737,32 +688,26 @@ class ParserMediator(object):
     self._language_tag = language_tag
     self._lcid = lcid
 
-  def SetPreferredTimeZone(self, time_zone):
+  def SetPreferredTimeZone(self, time_zone_string):
     """Sets the preferred time zone for zone-less date and time values.
 
     Args:
-      time_zone (str): time zone such as "Europe/Amsterdam" or None if the
-          time zone determined by preprocessing or the default should be used.
+      time_zone_string (str): time zone such as "Europe/Amsterdam" or None if
+          the time zone determined by preprocessing or the default should be
+          used.
 
     Raises:
       ValueError: if the time zone is not supported.
     """
-    if time_zone is not None:
+    time_zone = None
+    if time_zone_string:
       try:
-        time_zone = pytz.timezone(time_zone)
+        time_zone = pytz.timezone(time_zone_string)
       except pytz.UnknownTimeZoneError:
-        raise ValueError('Unsupported time zone: {0!s}'.format(time_zone))
+        raise ValueError('Unsupported time zone: {0!s}'.format(
+            time_zone_string))
 
     self._time_zone = time_zone
-
-  def SetPreferredYear(self, year):
-    """Sets the preferred year for year-less date and time values.
-
-    Args:
-      year (int): initial year value such as 2012 or None if the year of
-          year-less date and time values should be estimated.
-    """
-    self._preferred_year = year
 
   def SetStorageWriter(self, storage_writer):
     """Sets the storage writer.
@@ -784,15 +729,6 @@ class ParserMediator(object):
     """
     self._temporary_directory = temporary_directory
 
-  def SetTextPrepend(self, text_prepend):
-    """Sets the text to prepend to the display name.
-
-    Args:
-      text_prepend (str): text to prepend to the display name or None if no
-          text should be prepended.
-    """
-    self._text_prepend = text_prepend
-
   def SignalAbort(self):
     """Signals the parsers to abort."""
     self._abort = True
@@ -809,27 +745,38 @@ class ParserMediator(object):
     if not configuration:
       return
 
+    if configuration.HaveProfileFormatChecks():
+      identifier = '{0:s}-format_checks'.format(identifier)
+
+      self._format_checks_cpu_time_profiler = profilers.CPUTimeProfiler(
+          identifier, configuration)
+      self._format_checks_cpu_time_profiler.Start()
+
     if configuration.HaveProfileParsers():
       identifier = '{0:s}-parsers'.format(identifier)
 
-      self._cpu_time_profiler = profilers.CPUTimeProfiler(
+      self._parsers_cpu_time_profiler = profilers.CPUTimeProfiler(
           identifier, configuration)
-      self._cpu_time_profiler.Start()
+      self._parsers_cpu_time_profiler.Start()
 
-      self._memory_profiler = profilers.MemoryProfiler(
+      self._parsers_memory_profiler = profilers.MemoryProfiler(
           identifier, configuration)
-      self._memory_profiler.Start()
+      self._parsers_memory_profiler.Start()
 
     self._process_information = process_information
 
   def StopProfiling(self):
     """Stops profiling."""
-    if self._cpu_time_profiler:
-      self._cpu_time_profiler.Stop()
-      self._cpu_time_profiler = None
+    if self._format_checks_cpu_time_profiler:
+      self._format_checks_cpu_time_profiler.Stop()
+      self._format_checks_cpu_time_profiler = None
 
-    if self._memory_profiler:
-      self._memory_profiler.Stop()
-      self._memory_profiler = None
+    if self._parsers_cpu_time_profiler:
+      self._parsers_cpu_time_profiler.Stop()
+      self._parsers_cpu_time_profiler = None
+
+    if self._parsers_memory_profiler:
+      self._parsers_memory_profiler.Stop()
+      self._parsers_memory_profiler = None
 
     self._process_information = None

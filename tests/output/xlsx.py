@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """Tests for the XLSX output module."""
 
+import datetime
 import os
 import unittest
 import zipfile
 
 from defusedxml import ElementTree
 
+from plaso.containers import events
 from plaso.lib import definitions
 from plaso.output import xlsx
 
@@ -96,8 +98,13 @@ class XLSXOutputModuleTest(test_lib.OutputModuleTestCase):
 
     return rows
 
+<<<<<<< HEAD
   def testWriteEvent(self):
     """Tests the WriteEvent function."""
+=======
+  def testGetFieldValues(self):
+    """Tests the _GetFieldValues function."""
+>>>>>>> origin/main
     output_mediator = self._CreateOutputMediator()
 
     formatters_directory_path = self._GetTestFilePath(['formatters'])
@@ -105,10 +112,47 @@ class XLSXOutputModuleTest(test_lib.OutputModuleTestCase):
         formatters_directory_path)
 
     output_module = xlsx.XLSXOutputModule()
+<<<<<<< HEAD
+=======
+
+    event, event_data, event_data_stream = (
+        containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
+
+    event_tag = events.EventTag()
+    event_tag.AddLabels(['Malware', 'Printed'])
+
+    expected_field_values = {
+        'datetime': datetime.datetime(2012, 6, 27, 18, 17, 1),
+        'display_name': '-',
+        'message': (
+            'Reporter <CRON> PID: 8442 (pam_unix(cron:session): session '
+            'closed for user root) Invalid character -> �'),
+        'parser': '-',
+        'source': 'FILE',
+        'source_long': 'Test log file',
+        'tag': 'Malware Printed',
+        'timestamp_desc': 'Metadata Modification Time'}
+
+    field_values = output_module._GetFieldValues(
+        output_mediator, event, event_data, event_data_stream, event_tag)
+
+    self.assertEqual(field_values, expected_field_values)
+
+  def testWriteFieldValues(self):
+    """Tests the _WriteFieldValues function."""
+    output_mediator = self._CreateOutputMediator()
+
+    formatters_directory_path = self._GetTestFilePath(['formatters'])
+    output_mediator.ReadMessageFormattersFromDirectory(
+        formatters_directory_path)
+
+    output_module = xlsx.XLSXOutputModule()
+>>>>>>> origin/main
 
     with shared_test_lib.TempDirectory() as temp_directory:
       xslx_file = os.path.join(temp_directory, 'xlsx.out')
 
+<<<<<<< HEAD
       output_module.Open(path=xslx_file)
       output_module.WriteHeader(output_mediator)
 
@@ -117,9 +161,26 @@ class XLSXOutputModuleTest(test_lib.OutputModuleTestCase):
 
       output_module.WriteEvent(
           output_mediator, event, event_data, event_data_stream, None)
+=======
+      event, event_data, event_data_stream = (
+          containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
 
-      output_module.WriteFooter()
-      output_module.Close()
+      event_tag = events.EventTag()
+      event_tag.AddLabels(['Malware', 'Printed'])
+>>>>>>> origin/main
+
+      output_module.Open(path=xslx_file)
+
+      try:
+        output_module.WriteHeader(output_mediator)
+
+        field_values = output_module._GetFieldValues(
+            output_mediator, event, event_data, event_data_stream, event_tag)
+
+        output_module._WriteFieldValues(output_mediator, field_values)
+
+      finally:
+        output_module.Close()
 
       try:
         rows = self._GetSheetRows(xslx_file)
@@ -134,7 +195,7 @@ class XLSXOutputModuleTest(test_lib.OutputModuleTestCase):
           'Test log file',
           'Reporter <CRON> PID: 8442 (pam_unix(cron:session): session '
           'closed for user root) Invalid character -> \ufffd',
-          '-', '-', '-']
+          '-', '-', 'Malware Printed']
 
       self.assertEqual(expected_header, rows[0])
       self.assertEqual(len(expected_event_body), len(rows[1]))
@@ -153,9 +214,17 @@ class XLSXOutputModuleTest(test_lib.OutputModuleTestCase):
       xlsx_file = os.path.join(temp_directory, 'xlsx.out')
 
       output_module.Open(path=xlsx_file)
+<<<<<<< HEAD
       output_module.WriteHeader(output_mediator)
       output_module.WriteFooter()
       output_module.Close()
+=======
+
+      try:
+        output_module.WriteHeader(output_mediator)
+      finally:
+        output_module.Close()
+>>>>>>> origin/main
 
       try:
         rows = self._GetSheetRows(xlsx_file)

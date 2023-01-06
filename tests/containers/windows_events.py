@@ -20,7 +20,12 @@ class WindowsDistributedLinkTrackingEventDataTest(shared_test_lib.BaseTestCase):
         windows_events.WindowsDistributedLinkTrackingEventData(test_uuid, None))
 
     expected_attribute_names = [
+<<<<<<< HEAD
         '_event_data_stream_row_identifier',
+=======
+        '_event_data_stream_identifier',
+        '_event_values_hash',
+>>>>>>> origin/main
         'creation_time',
         'data_type',
         'mac_address',
@@ -41,7 +46,12 @@ class WindowsShellItemFileEntryEventDataTest(shared_test_lib.BaseTestCase):
     attribute_container = windows_events.WindowsShellItemFileEntryEventData()
 
     expected_attribute_names = [
+<<<<<<< HEAD
         '_event_data_stream_row_identifier',
+=======
+        '_event_data_stream_identifier',
+        '_event_values_hash',
+>>>>>>> origin/main
         'access_time',
         'creation_time',
         'data_type',
@@ -67,8 +77,14 @@ class WindowsVolumeEventDataTest(shared_test_lib.BaseTestCase):
     attribute_container = windows_events.WindowsVolumeEventData()
 
     expected_attribute_names = [
-        '_event_data_stream_row_identifier', 'data_type', 'device_path',
-        'origin', 'parser', 'serial_number']
+        '_event_data_stream_identifier',
+        '_event_values_hash',
+        'creation_time',
+        'data_type',
+        'device_path',
+        'origin',
+        'parser',
+        'serial_number']
 
     attribute_names = sorted(attribute_container.GetAttributeNames())
 

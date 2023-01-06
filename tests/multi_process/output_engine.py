@@ -39,10 +39,17 @@ class TestOutputModule(output_interface.OutputModule):
     self.events = []
     self.macb_groups = []
 
+<<<<<<< HEAD
   def WriteEventBody(
       self, output_mediator_object, event, event_data, event_data_stream,
        event_tag):
     """Writes the body of an event object to the output.
+=======
+  def _GetFieldValues(
+      self, output_mediator_object, event, event_data, event_data_stream,
+      event_tag):
+    """Retrieves the output field values.
+>>>>>>> origin/main
 
     Args:
       output_mediator_object (OutputMediator): mediates interactions between
@@ -51,9 +58,13 @@ class TestOutputModule(output_interface.OutputModule):
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
       event_tag (EventTag): event tag.
-    """
-    self.events.append((event, event_data, event_data_stream, event_tag))
 
+    Returns:
+      dict[str, str]: output field values per name.
+    """
+    return {}
+
+<<<<<<< HEAD
   def WriteHeader(self, output_mediator_object):
     """Writes the header to the output.
 
@@ -73,15 +84,43 @@ class TestOutputModule(output_interface.OutputModule):
     This function is called if the psort engine detected an event MACB group
     so that the output module, if supported, can represent the group as
     such. If not overridden this function will output every event individually.
+=======
+  def _WriteFieldValues(self, output_mediator_object, field_values):
+    """Writes field values to the output.
+>>>>>>> origin/main
 
     Args:
       output_mediator_object (OutputMediator): mediates interactions between
           output modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event_macb_group (list[EventObject]): group of events with identical
           timestamps, attributes and values.
+=======
+      field_values (dict[str, str]): output field values per name.
+>>>>>>> origin/main
     """
-    self.events.extend(event_macb_group)
-    self.macb_groups.append(event_macb_group)
+    self.events.append(field_values)
+
+  def WriteFieldValuesOfMACBGroup(self, output_mediator_object, macb_group):
+    """Writes field values of a MACB group to the output.
+
+    Args:
+      output_mediator_object (OutputMediator): mediates interactions between
+          output modules and other components, such as storage and dfVFS.
+      macb_group (list[dict[str, str]]): group of output field values per name
+          with identical timestamps, attributes and values.
+    """
+    self.events.extend(macb_group)
+    self.macb_groups.append(macb_group)
+
+  def WriteHeader(self, output_mediator_object):
+    """Writes the header to the output.
+
+    Args:
+      output_mediator_object (OutputMediator): mediates interactions between
+          output modules and other components, such as storage and dfVFS.
+    """
+    return
 
 
 class PsortEventHeapTest(test_lib.MultiProcessingTestCase):
@@ -100,27 +139,12 @@ class PsortEventHeapTest(test_lib.MultiProcessingTestCase):
        'text': 'text',
        'timestamp': 2345871286,
        'timestamp_desc': definitions.TIME_DESCRIPTION_METADATA_MODIFICATION,
-       'var': {'Issue': False, 'Closed': True}}]
+       'var': 'Issue: False, Closed: True'}]
 
   def testNumberOfEvents(self):
     """Tests the number_of_events property."""
     event_heap = output_engine.PsortEventHeap()
     self.assertEqual(event_heap.number_of_events, 0)
-
-  def testGetEventIdentifiers(self):
-    """Tests the _GetEventIdentifiers function."""
-    event_heap = output_engine.PsortEventHeap()
-
-    event, event_data, event_data_stream = (
-        containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
-    macb_group_identifier, content_identifier = event_heap._GetEventIdentifiers(
-        event, event_data, event_data_stream)
-
-    expected_identifier = 'data_type: test:event'
-    self.assertEqual(macb_group_identifier, expected_identifier)
-
-    expected_identifier = 'Metadata Modification Time, data_type: test:event'
-    self.assertEqual(content_identifier, expected_identifier)
 
   def testPopEvent(self):
     """Tests the PopEvent function."""

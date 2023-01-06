@@ -1,7 +1,7 @@
 # Plaso event formatters.
 ---
 type: 'conditional'
-data_type: 'apache:access'
+data_type: 'apache:access_log:entry'
 message:
 - 'http_request: {http_request}'
 - 'from: {ip_address}'
@@ -13,6 +13,8 @@ message:
 short_message:
 - '{http_request}'
 - 'from: {ip_address}'
+short_source: 'LOG'
+source: 'Apache Access Log'
 ---
 type: 'conditional'
 data_type: 'aws:cloudtrail:entry'
@@ -26,6 +28,8 @@ short_message:
 - 'User {user_name}'
 - 'performed {event_name}'
 - 'on [{resources}]'
+short_source: 'LOG'
+source: 'AWS CloudTrail Log'
 ---
 type: 'conditional'
 data_type: 'aws:elb:access'
@@ -54,6 +58,8 @@ short_message:
 - 'domain_name: {domain_name}'
 - 'request: {request}'
 - 'user_agent: {user_agent}'
+short_source: 'LOG'
+source: 'AWS Elastic Load Balancer Access Log'
 ---
 type: 'conditional'
 data_type: 'azure:activitylog:entry'
@@ -66,9 +72,11 @@ short_message:
 - 'User {caller}'
 - 'performed {operation_name}'
 - 'on {resource_identifier}'
+short_source: 'LOG'
+source: 'Azure Activity Log'
 ---
 type: 'conditional'
-data_type: 'azure:applicationgatewayaccess:entry'
+data_type: 'azure:application_gateway_access:entry'
 message:
 - 'instance: {instance_identifier}'
 - 'client IP address: {client_ip}'
@@ -103,16 +111,21 @@ short_message:
 - 'http method: {http_method}'
 - 'original request URI: {original_request_uri}'
 - 'http status: {http_status}'
+short_source: 'LOG'
+source: 'Azure Application Gateway Access Log'
 ---
 type: 'basic'
-data_type: 'bash:history:command'
+data_type: 'bash:history:entry'
 message: 'Command executed: {command}'
 short_message: '{command}'
+short_source: 'LOG'
+source: 'Bash History'
 ---
 type: 'conditional'
 data_type: 'confluence:access'
 message:
-- 'http_request: {http_request_method} {http_request_uri}'
+- 'http_request: {http_request_method} '
+- '{http_request_uri}'
 - 'from: {remote_name}'
 - 'via: {forwarded_for}'
 - 'user: {user_name}'
@@ -124,6 +137,8 @@ short_message:
 - '{http_request_method}'
 - '{http_request_uri}'
 - 'from: {remote_name}'
+short_source: 'LOG'
+source: 'Confluence access log'
 ---
 type: 'conditional'
 data_type: 'cups:ipp:event'
@@ -138,6 +153,8 @@ message:
 short_message:
 - 'Status: {status}'
 - 'Job Name: {job_name}'
+short_source: 'LOG'
+source: 'CUPS IPP Log'
 ---
 type: 'conditional'
 data_type: 'docker:container:configuration'
@@ -150,6 +167,8 @@ short_message:
 - 'Container identifier: {container_identifier}'
 - 'Container name: {container_name}'
 - 'Action: {action}'
+short_source: 'DOCKER'
+source: 'Docker Container'
 ---
 type: 'conditional'
 data_type: 'docker:container:log:entry'
@@ -162,6 +181,8 @@ short_message:
 - 'Container identifier: {container_identifier}'
 - 'Source: {log_source}'
 - 'Text: {log_line}'
+short_source: 'DOCKER'
+source: 'Docker Container Log'
 ---
 type: 'conditional'
 data_type: 'docker:layer:configuration'
@@ -172,6 +193,8 @@ separator: ', '
 short_message:
 - 'Layer identifier: {layer_identifier}'
 - 'Command: {command}'
+short_source: 'DOCKER'
+source: 'Docker Layer'
 ---
 type: 'conditional'
 data_type: 'dropbox:sync_history:entry'
@@ -181,12 +204,18 @@ message:
 - 'Event type: {event_type}'
 - 'Direction: {direction}'
 short_message:
-- '{local_path} {event_type} {direction}'
+- '{local_path}'
+- '{event_type}'
+- '{direction}'
+short_source: 'HISTORY'
+source: 'Dropbox sync history'
 ---
 type: 'basic'
-data_type: 'fish:history:command'
+data_type: 'fish:history:entry'
 message: 'Command executed: {command}'
 short_message: '{command}'
+short_source: 'LOG'
+source: 'Fish History'
 ---
 type: 'conditional'
 data_type: 'fs:bodyfile:entry'
@@ -198,6 +227,8 @@ message:
 - 'MD5: {md5}'
 short_message:
 - '{filename}'
+short_source: 'FILE'
+source: 'Bodyfile'
 ---
 type: 'conditional'
 data_type: 'fs:ntfs:usn_change'
@@ -248,6 +279,8 @@ short_message:
 - '{filename}'
 - '{file_reference}'
 - '{update_reason}'
+short_source: 'FILE'
+source: 'NTFS USN change'
 ---
 type: 'conditional'
 data_type: 'fs:stat'
@@ -265,6 +298,8 @@ message:
 - '({unallocated})'
 short_message:
 - '{filename}'
+short_source: 'FILE'
+source: 'File stat'
 ---
 type: 'conditional'
 data_type: 'fs:stat:ntfs'
@@ -298,6 +333,8 @@ short_message:
 - '{filename}'
 - '{file_reference}'
 - '{attribute_name}'
+short_source: 'FILE'
+source: 'NTFS file stat'
 ---
 type: 'conditional'
 data_type: 'gcp:log:entry'
@@ -311,6 +348,8 @@ short_message:
 - 'User {user}'
 - 'performed {action}'
 - 'on {resource}'
+short_source: 'LOG'
+source: 'Google Cloud Log'
 ---
 type: 'conditional'
 data_type: 'gdrive:snapshot:cloud_entry'
@@ -340,6 +379,8 @@ message:
 - 'Type: {document_type}'
 short_message:
 - '{path}'
+short_source: 'LOG'
+source: 'Google Drive (cloud entry)'
 ---
 type: 'conditional'
 data_type: 'gdrive:snapshot:local_entry'
@@ -348,17 +389,21 @@ message:
 - 'Size: {size}'
 short_message:
 - '{path}'
+short_source: 'LOG'
+source: 'Google Drive (local entry)'
 ---
 type: 'conditional'
-data_type: 'gdrive_sync:log:line'
+data_type: 'google_drive_sync_log:entry'
 message:
-- '[{log_level}'
-- '{pid}'
+- '[{level}'
+- '{process_identifier}'
 - '{thread}'
 - '{source_code}]'
 - '{message}'
 short_message:
 - '{message}'
+short_source: 'LOG'
+source: 'Google Drive Sync Log'
 ---
 type: 'conditional'
 data_type: 'googlelog:log'
@@ -368,6 +413,8 @@ message:
 - '{message}'
 short_message:
 - '{message}'
+short_source: 'LOG'
+source: 'Google Log'
 ---
 type: 'conditional'
 data_type: 'java:download:idx'
@@ -379,6 +426,8 @@ short_message:
 - 'IDX Version: {idx_version}'
 - 'Host IP address: ({ip_address})'
 - 'Download URL: {url}'
+short_source: 'JAVA_IDX'
+source: 'Java Cache IDX'
 ---
 type: 'conditional'
 data_type: 'kodi:videos:viewing'
@@ -387,8 +436,11 @@ message:
 - 'Play Count: {play_count}'
 short_message:
 - '{filename}'
+short_source: 'KODI'
+source: 'Kodi Video Viewed'
 ---
 type: 'conditional'
+<<<<<<< HEAD
 data_type: 'metadata:openxml'
 message:
 - 'Creating App: {creating_app}'
@@ -427,6 +479,9 @@ short_message:
 ---
 type: 'conditional'
 data_type: microsoft:auditlog:entry
+=======
+data_type: 'microsoft365:audit_log:entry'
+>>>>>>> origin/main
 message:
 - 'User {user_identifier}'
 - 'performed {operation_name}'
@@ -441,6 +496,8 @@ short_message:
 - 'on {workload}'
 - 'Result Status: {result_status}'
 - 'Record Type: {record_type}'
+short_source: 'LOG'
+source: 'Microsoft (Office) 365 Audit Log'
 ---
 type: 'conditional'
 data_type: 'networkminer:fileinfos:file'
@@ -460,6 +517,8 @@ short_message:
 - '{filename}'
 - '{file_path}'
 - '{file_md5}'
+short_source: 'NetworkMiner'
+source: 'NetworkMiner fileinfos'
 ---
 type: 'conditional'
 data_type: 'olecf:dest_list:entry'
@@ -483,6 +542,8 @@ short_message:
 - 'Entry: {entry_number}'
 - 'Pin status: {pin_status}'
 - 'Path: {path}'
+short_source: 'OLECF'
+source: 'OLECF Dest list entry'
 ---
 type: 'conditional'
 data_type: 'olecf:document_summary_info'
@@ -504,17 +565,29 @@ message:
 - 'Document version: {document_version}'
 short_message:
 - 'Company: {company}'
+short_source: 'OLECF'
+source: 'OLECF Document Summary Info'
 ---
 type: 'basic'
 data_type: 'olecf:item'
 message: 'Name: {name}'
 short_message: 'Name: {name}'
+short_source: 'OLECF'
+source: 'OLECF Item'
 ---
+# TODO: security and total_edit_time are kept for backwards compatibility
 type: 'conditional'
 data_type: 'olecf:summary_info'
 flags_helpers:
 - input_attribute: 'security'
-  output_attribute: 'security_flags'
+  output_attribute: 'security_flags_description'
+  values:
+    0x00000001: 'Password protected'
+    0x00000002: 'Read-only recommended'
+    0x00000004: 'Read-only enforced'
+    0x00000008: 'Locked for annotations'
+- input_attribute: 'security_flags'
+  output_attribute: 'security_flags_description'
   values:
     0x00000001: 'Password protected'
     0x00000002: 'Read-only recommended'
@@ -529,18 +602,61 @@ message:
 - 'Template: {template}'
 - 'Revision number: {revision_number}'
 - 'Last saved by: {last_saved_by}'
-- 'Total edit time: {total_edit_time}'
+- 'Total edit time (secs): {edit_duration}'
+- 'Total edit time (secs): {total_edit_time}'
 - 'Number of pages: {number_of_pages}'
 - 'Number of words: {number_of_words}'
 - 'Number of characters: {number_of_characters}'
 - 'Application: {application}'
+- 'Security flags: 0x{security_flags:08x}'
 - 'Security flags: 0x{security:08x}'
-- '[{security_flags}]'
+- '[{security_flags_description}]'
 short_message:
 - 'Title: {title}'
 - 'Subject: {subject}'
 - 'Author: {author}'
 - 'Revision number: {revision_number}'
+short_source: 'OLECF'
+source: 'OLECF Summary Info'
+---
+type: 'conditional'
+data_type: 'openxml:metadata'
+message:
+- 'Application: {application}'
+- '{application_version}'
+- 'Title: {title}'
+- 'Subject: {subject}'
+- 'Last saved by: {last_saved_by}'
+- 'Author: {author}'
+- 'Total edit time (secs): {edit_duration}'
+- 'Keywords: {keywords}'
+- 'Comments: {comments}'
+- 'Revision number: {revision_number}'
+- 'Template: {template}'
+- 'Number of pages: {number_of_pages}'
+- 'Number of words: {number_of_words}'
+- 'Number of characters: {number_of_characters}'
+- 'Number of characters with spaces: {number_of_characters_with_spaces}'
+- 'Number of lines: {number_of_lines}'
+- 'Number of slides: {number_of_slides}'
+- 'Number of hidden slides: {number_of_hidden_slides}'
+- 'Number of multi-media clips: {number_of_clips}'
+- 'Company: {company}'
+- 'Manager: {manager}'
+- 'Shared: {shared}'
+- 'Security flags: 0x{security_flags:08x}'
+- 'Hyperlinks changed: {hyperlinks_changed}'
+- 'Links up to date: {links_up_to_date}'
+- 'Scale: {scale}'
+- 'Digital signature: {digital_signature}'
+- 'Presentation format: {presentation_format}'
+- 'Notes: {notes}'
+short_message:
+- 'Title: {title}'
+- 'Subject: {subject}'
+- 'Author: {author}'
+short_source: 'META'
+source: 'Open XML Metadata'
 ---
 type: 'conditional'
 data_type: 'p2p:bittorrent:transmission'
@@ -551,33 +667,61 @@ separator: '; '
 short_message:
 - 'Saved to {destination}'
 - 'Minutes seeded: {seedtime}'
+short_source: 'TORRENT'
+source: 'Transmission Active Torrents'
 ---
+# TODO: path is kept for backwards compatibility
 type: 'conditional'
 data_type: 'p2p:bittorrent:utorrent'
 message:
 - 'Torrent {caption}'
+- 'Saved to {destination}'
 - 'Saved to {path}'
 - 'Minutes seeded: {seedtime}'
 separator: '; '
 short_message:
 - 'Torrent {caption}'
+- 'Saved to {destination}'
 - 'Saved to {path}'
 - 'Minutes seeded: {seedtime}'
+short_source: 'TORRENT'
+source: 'uTorrent Active Torrents'
 ---
 type: 'conditional'
-data_type: 'pe'
+data_type: 'pe_coff:dll_import'
+message:
+- 'Name: {name}'
+- 'Delayed import: {delayed_import}'
+short_message:
+- '{name}'
+short_source: 'PE'
+source: 'PE/COFF DLL import table'
+---
+type: 'conditional'
+data_type: 'pe_coff:file'
 message:
 - 'PE Type: {pe_type}'
-- '[{pe_attribute}]'
-- 'DLL name: {dll_name}'
 - 'Import hash: {imphash}'
+- 'Export DLL name: {export_dll_name}'
 short_message:
 - '{pe_type}'
-- '[{pe_attribute}]'
-- '{dll_name}'
+- '{export_dll_name}'
+short_source: 'PE'
+source: 'PE/COFF file'
 ---
 type: 'conditional'
-data_type: 'PLSRecall:event'
+data_type: 'pe_coff:resource'
+message:
+- 'Identifier: {identifier}'
+- 'Name: {name}'
+short_message:
+- '{identifier}'
+- '{name}'
+short_source: 'PE'
+source: 'PE/COFF DLL resource section'
+---
+type: 'conditional'
+data_type: 'pls_recall:entry'
 message:
 - 'Sequence number: {sequence_number}'
 - 'Username: {username}'
@@ -588,26 +732,24 @@ short_message:
 - '{username}'
 - '{database_name}'
 - '{query}'
+short_source: 'PLSRecall'
+source: 'PL/SQL Developer Recall file'
 ---
+# TODO: log_level is kept for backwards compatibility
 type: 'conditional'
-data_type: 'popularity_contest:log:event'
+data_type: 'postgresql:application_log:entry'
 message:
-- 'mru [{mru}]'
-- 'package [{package}]'
-- 'tag [{record_tag}]'
+- 'PID {pid}'
+- '{user}'
+- '{log_level}'
+- '{severity}'
+- '{log_line}'
 short_message:
-- '{mru}'
----
-type: 'conditional'
-data_type: 'popularity_contest:session:event'
-message:
-- 'Session {session}'
-- '{status}'
-- 'ID {hostid}'
-- '[{details}]'
-short_message:
-- 'Session {session}'
-- '{status}'
+- '{log_level}'
+- '{severity}'
+- '{log_line}'
+short_source: 'LOG'
+source: 'PostgreSQL Log'
 ---
 type: 'conditional'
 data_type: 'postgresql:application_log:entry'
@@ -630,6 +772,8 @@ message:
 short_message:
 - '{action}'
 - '{volume}'
+short_source: 'LOG'
+source: 'Santa disk mount'
 ---
 type: 'conditional'
 data_type: 'santa:execution'
@@ -640,6 +784,8 @@ message:
 short_message:
 - '{decision}'
 - 'process: {process_path}'
+short_source: 'LOG'
+source: 'Santa Execution'
 ---
 type: 'conditional'
 data_type: 'santa:file_system_event'
@@ -650,6 +796,8 @@ message:
 short_message:
 - 'File {action}'
 - 'on: {file_path}'
+short_source: 'LOG'
+source: 'Santa FSEvent'
 ---
 type: 'conditional'
 data_type: 'shell:zsh:history'
@@ -658,18 +806,11 @@ message:
 - 'Time elapsed: {elapsed_seconds} seconds'
 short_message:
 - '{command}'
+short_source: 'HIST'
+source: 'Santa FSEvent'
 ---
 type: 'conditional'
-data_type: 'skydrive:log:old:line'
-message:
-- '[{source_code}]'
-- '({log_level})'
-- '{text}'
-short_message:
-- '{text}'
----
-type: 'conditional'
-data_type: 'skydrive:log:line'
+data_type: 'skydrive:log:entry'
 message:
 - '[{module}'
 - '{source_code}'
@@ -677,6 +818,8 @@ message:
 - '{detail}'
 short_message:
 - '{detail}'
+short_source: 'LOG'
+source: 'SkyDrive Log File'
 ---
 type: 'conditional'
 data_type: 'skype:event:account'
@@ -688,6 +831,8 @@ short_message:
 - '{username}'
 - '[{email}]'
 - 'Country: {country}'
+short_source: 'LOG'
+source: 'Skype Account'
 ---
 type: 'conditional'
 data_type: 'skype:event:call'
@@ -699,6 +844,8 @@ short_message:
 - 'From: {src_call}'
 - 'To: {dst_call}'
 - '[{call_type}]'
+short_source: 'LOG'
+source: 'Skype Call'
 ---
 type: 'conditional'
 data_type: 'skype:event:chat'
@@ -710,6 +857,8 @@ message:
 short_message:
 - 'From: {from_account}'
 - 'To: {to_account}'
+short_source: 'LOG'
+source: 'Skype Chat Message'
 ---
 type: 'conditional'
 data_type: 'skype:event:sms'
@@ -719,6 +868,8 @@ message:
 short_message:
 - 'To: {number}'
 - '[{text}]'
+short_source: 'LOG'
+source: 'Skype Text Message (SMS)'
 ---
 type: 'conditional'
 data_type: 'skype:event:transferfile'
@@ -726,12 +877,12 @@ message:
 - 'Source: {source}'
 - 'Destination: {destination}'
 - 'File: {transferred_filename}'
-- '[{action_type}]'
 short_message:
 - 'Source: {source}'
 - 'Destination: {destination}'
 - 'File: {transferred_filename}'
-- '[{action_type}]'
+short_source: 'LOG'
+source: 'Skype File Transfer'
 ---
 type: 'conditional'
 data_type: 'snort:fastlog:alert'
@@ -750,14 +901,8 @@ short_message:
 - 'Source-IP: {source_ip}'
 - 'Destination-IP: {destination_ip}'
 - 'Rule: {rule_identifier}'
----
-type: 'conditional'
-data_type: 'syslog:comment'
-message:
-- '{body}'
-separator: ''
-short_message:
-- '{body}'
+short_source: 'LOG'
+source: 'Snort3/Suricata fast-log alert log'
 ---
 type: 'conditional'
 data_type: 'syslog:cron:task_run'
@@ -767,6 +912,8 @@ message:
 - 'pid: {pid}'
 short_message:
 - '{body}'
+short_source: 'LOG'
+source: 'Cron log'
 ---
 type: 'conditional'
 data_type: 'syslog:line'
@@ -783,40 +930,54 @@ short_message:
 - '{reporter}'
 - ', pid: {pid}'
 - '] {body}'
+short_source: 'LOG'
+source: 'Log File'
 ---
+# TODO: address is kept for backwards compatibility
 type: 'conditional'
 data_type: 'syslog:ssh:failed_connection'
 message:
 - 'Unsuccessful connection of user: {username} '
 - 'from {address}:'
+- 'from {ip_address}:'
 - '{port} '
 - 'using authentication method: {authentication_method} '
 - 'ssh pid: {pid}'
 separator: ''
 short_message:
 - '{body}'
+short_source: 'LOG'
+source: 'SSH Log'
 ---
+# TODO: address is kept for backwards compatibility
 type: 'conditional'
 data_type: 'syslog:ssh:login'
 message:
 - 'Successful login of user: {username} '
 - 'from {address}:'
+- 'from {ip_address}:'
 - '{port} '
 - 'using authentication method: {authentication_method} '
 - 'ssh pid: {pid}'
 separator: ''
 short_message:
 - '{body}'
+short_source: 'LOG'
+source: 'SSH Log'
 ---
+# TODO: address is kept for backwards compatibility
 type: 'conditional'
 data_type: 'syslog:ssh:opened_connection'
 message:
 - 'Connection opened {address}:'
+- 'Connection opened {ip_address}:'
 - '{port} '
 - 'ssh pid: {pid}'
 separator: ''
 short_message:
 - '{body}'
+short_source: 'LOG'
+source: 'SSH Log'
 ---
 # It would be nice to have the _MACHINE_ID field, which is a unique identifier
 # for the system, and hopefully more unique than the _HOSTNAME field.
@@ -837,6 +998,8 @@ short_message:
 - '{reporter}'
 - ', pid: {pid}'
 - '] {body}'
+short_source: 'LOG'
+source: 'Systemd journal'
 ---
 type: 'conditional'
 data_type: 'systemd:journal:dirty'
@@ -853,11 +1016,15 @@ short_message:
 - '{reporter}'
 - ', pid: {pid}'
 - '] {body}'
+short_source: 'LOG'
+source: 'Systemd journal'
 ---
 type: 'basic'
 data_type: 'text:entry'
 message: '{text}'
 short_message: '{text}'
+short_source: 'LOG'
+source: 'Text File'
 ---
 type: 'conditional'
 data_type: 'viminfo:history'
@@ -872,6 +1039,8 @@ short_message:
 - '[{type}]'
 - '{value}'
 - '{filename}'
+short_source: 'HISTORY'
+source: 'viminfo'
 ---
 type: 'conditional'
 data_type: 'vsftpd:log'
@@ -879,6 +1048,8 @@ message:
 - '{text}'
 short_message:
 - '{text}'
+short_source: 'LOG'
+source: 'vsftpd log'
 ---
 type: 'conditional'
 data_type: 'xchat:log:line'
@@ -888,6 +1059,8 @@ message:
 short_message:
 - '[nickname: {nickname}]'
 - '{text}'
+short_source: 'LOG'
+source: 'XChat Log'
 ---
 type: 'conditional'
 data_type: 'xchat:scrollback:line'
@@ -902,8 +1075,12 @@ short_message:
 - 'nickname: {nickname}'
 - ']'
 - ' {text}'
+short_source: 'LOG'
+source: 'XChat Scrollback Log'
 ---
 type: 'basic'
 data_type: 'zeitgeist:activity'
 message: '{subject_uri}'
 short_message: '{subject_uri}'
+short_source: 'LOG'
+source: 'Zeitgeist Activity Log'

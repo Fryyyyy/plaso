@@ -1,10 +1,85 @@
 # -*- coding: utf-8 -*-
 """Event attribute containers."""
 
+import hashlib
 import re
 
-from plaso.containers import interface
-from plaso.containers import manager
+from acstore.containers import interface
+from acstore.containers import manager
+
+from dfdatetime import interface as dfdatetime_interface
+
+
+def CalculateEventValuesHash(event_data, event_data_stream):
+  """Calculates a digest hash of the event values.
+
+  Args:
+    event_data (EventData): event data.
+    event_data_stream (EventDataStream): an event data stream or None if not
+        available.
+
+  Returns:
+    str: digest hash of the event values content.
+
+  Raises:
+    RuntimeError: if the event values hash cannot be determined.
+  """
+  attributes = ['data_type: {0:s}'.format(event_data.data_type)]
+
+  for attribute_name, attribute_value in sorted(event_data.GetAttributes()):
+    if attribute_value is None or attribute_name in (
+        '_event_data_stream_identifier', '_event_values_hash', 'data_type',
+        'parser'):
+      continue
+
+    # Ignore date and time values.
+    if isinstance(attribute_value, dfdatetime_interface.DateTimeValues):
+      continue
+
+    if (isinstance(attribute_value, list) and attribute_value and
+        isinstance(attribute_value[0],
+                     dfdatetime_interface.DateTimeValues)):
+      continue
+
+    if not isinstance(attribute_value, (bool, float, int, list, str)):
+      raise RuntimeError(
+          'Unsupported attribute: {0:s} value type: {1!s}'.format(
+              attribute_name, type(attribute_value)))
+
+    try:
+      attribute_string = '{0:s}: {1!s}'.format(
+          attribute_name, attribute_value)
+      attributes.append(attribute_string)
+    except UnicodeDecodeError:
+      raise RuntimeError(
+          'Failed to decode attribute {0:s}'.format(attribute_name))
+
+  if event_data_stream:
+    for attribute_name, attribute_value in sorted(
+        event_data_stream.GetAttributes()):
+
+      if attribute_name == 'path_spec':
+        attribute_value = attribute_value.comparable
+
+      elif not isinstance(attribute_value, (bool, float, int, list, str)):
+        raise RuntimeError(
+            'Unsupported attribute: {0:s} value type: {1!s}'.format(
+                attribute_name, type(attribute_value)))
+
+      try:
+        attribute_string = '{0:s}: {1!s}'.format(
+            attribute_name, attribute_value)
+        attributes.append(attribute_string)
+      except UnicodeDecodeError:
+        raise RuntimeError(
+            'Failed to decode attribute {0:s}'.format(attribute_name))
+
+  content = ', '.join(attributes)
+  content_data = content.encode('utf-8')
+
+  md5_context = hashlib.md5(content_data)
+
+  return md5_context.hexdigest()
 
 
 class EventData(interface.AttributeContainer):
@@ -17,9 +92,12 @@ class EventData(interface.AttributeContainer):
     data_type (str): event data type indicator.
     parser (str): string identifying the parser that produced the event data.
   """
+
   CONTAINER_TYPE = 'event_data'
 
-  _SERIALIZABLE_PROTECTED_ATTRIBUTES = ['_event_data_stream_row_identifier']
+  _SERIALIZABLE_PROTECTED_ATTRIBUTES = [
+      '_event_data_stream_identifier',
+      '_event_values_hash']
 
   def __init__(self, data_type=None):
     """Initializes an event data attribute container.
@@ -29,7 +107,7 @@ class EventData(interface.AttributeContainer):
     """
     super(EventData, self).__init__()
     self._event_data_stream_identifier = None
-    self._event_data_stream_row_identifier = None
+    self._event_values_hash = None
     self.data_type = data_type
     self.parser = None
 
@@ -102,6 +180,7 @@ class EventDataStream(interface.AttributeContainer):
     yara_match (list[str]): names of the Yara rules that matched the data
         stream.
   """
+
   CONTAINER_TYPE = 'event_data_stream'
 
   SCHEMA = {
@@ -137,21 +216,22 @@ class EventObject(interface.AttributeContainer):
         since January 1, 1970, 00:00:00 UTC.
     timestamp_desc (str): description of the meaning of the timestamp.
   """
+
   CONTAINER_TYPE = 'event'
 
   SCHEMA = {
-      '_event_data_row_identifier': 'AttributeContainerIdentifier',
+      '_event_data_identifier': 'AttributeContainerIdentifier',
       'date_time': 'dfdatetime.DateTimeValues',
       'timestamp': 'int',
       'timestamp_desc': 'str'}
 
-  _SERIALIZABLE_PROTECTED_ATTRIBUTES = ['_event_data_row_identifier']
+  _SERIALIZABLE_PROTECTED_ATTRIBUTES = [
+      '_event_data_identifier']
 
   def __init__(self):
     """Initializes an event attribute container."""
     super(EventObject, self).__init__()
     self._event_data_identifier = None
-    self._event_data_row_identifier = None
     self.date_time = None
     self.timestamp = None
     # TODO: rename timestamp_desc to timestamp_description
@@ -202,15 +282,17 @@ class EventTag(interface.AttributeContainer):
   Attributes:
     labels (list[str]): labels, such as "malware", "application_execution".
   """
+
   CONTAINER_TYPE = 'event_tag'
 
   SCHEMA = {
-      '_event_row_identifier': 'AttributeContainerIdentifier',
+      '_event_identifier': 'AttributeContainerIdentifier',
       'labels': 'List[str]'}
 
   _INVALID_LABEL_CHARACTERS_REGEX = re.compile(r'[^A-Za-z0-9_]')
 
-  _SERIALIZABLE_PROTECTED_ATTRIBUTES = ['_event_row_identifier']
+  _SERIALIZABLE_PROTECTED_ATTRIBUTES = [
+      '_event_identifier']
 
   _VALID_LABEL_REGEX = re.compile(r'^[A-Za-z0-9_]+$')
 
@@ -218,7 +300,6 @@ class EventTag(interface.AttributeContainer):
     """Initializes an event tag attribute container."""
     super(EventTag, self).__init__()
     self._event_identifier = None
-    self._event_row_identifier = None
     self.labels = []
 
   def AddLabel(self, label):
@@ -262,14 +343,6 @@ class EventTag(interface.AttributeContainer):
       if label not in self.labels:
         self.labels.append(label)
 
-  def CopyToDict(self):
-    """Copies the event tag to a dictionary.
-
-    Returns:
-      dict[str, object]: event tag attributes.
-    """
-    return {'labels': self.labels}
-
   @classmethod
   def CopyTextToLabel(cls, text, prefix=''):
     """Copies a string to a label.
@@ -310,5 +383,59 @@ class EventTag(interface.AttributeContainer):
     self._event_identifier = event_identifier
 
 
+class YearLessLogHelper(interface.AttributeContainer):
+  """Year-less log helper attribute container.
+
+  Attributes:
+    earliest_year (int): earliest possible year the event data stream was
+        created.
+    last_relative_year (int): last relative year determined by the year-less
+        log helper.
+    latest_year (int): latest possible year the event data stream was created.
+  """
+
+  CONTAINER_TYPE = 'year_less_log_helper'
+
+  SCHEMA = {
+      '_event_data_stream_identifier': 'AttributeContainerIdentifier',
+      'earliest_year': 'int',
+      'last_relative_year': 'int',
+      'latest_year': 'int'}
+
+  _SERIALIZABLE_PROTECTED_ATTRIBUTES = [
+      '_event_data_stream_identifier']
+
+  def __init__(self):
+    """Initializes a year-less log helper attribute container."""
+    super(YearLessLogHelper, self).__init__()
+    self._event_data_stream_identifier = None
+    self.earliest_year = None
+    self.last_relative_year = None
+    self.latest_year = None
+
+  def GetEventDataStreamIdentifier(self):
+    """Retrieves the identifier of the associated event data stream.
+
+    The event data stream identifier is a storage specific value that requires
+    special handling during serialization.
+
+    Returns:
+      AttributeContainerIdentifier: event data stream or None when not set.
+    """
+    return self._event_data_stream_identifier
+
+  def SetEventDataStreamIdentifier(self, event_data_stream_identifier):
+    """Sets the identifier of the associated event data stream.
+
+    The event data stream identifier is a storage specific value that requires
+    special handling during serialization.
+
+    Args:
+      event_data_stream_identifier (AttributeContainerIdentifier): event data
+          stream identifier.
+    """
+    self._event_data_stream_identifier = event_data_stream_identifier
+
+
 manager.AttributeContainersManager.RegisterAttributeContainers([
-    EventData, EventDataStream, EventObject, EventTag])
+    EventData, EventDataStream, EventObject, EventTag, YearLessLogHelper])

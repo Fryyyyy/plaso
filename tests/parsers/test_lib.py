@@ -46,23 +46,16 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
 
     return file_object
 
-  def _CreateParserMediator(
-      self, storage_writer, collection_filters_helper=None,
-      file_entry=None, knowledge_base_values=None, parser_chain=None,
-      timezone='UTC'):
-    """Creates a parser mediator.
+  def _CreateKnowledgeBase(
+      self, knowledge_base_values=None, time_zone_string='UTC'):
+    """Creates a knowledge base.
 
     Args:
-      storage_writer (StorageWriter): storage writer.
-      collection_filters_helper (Optional[CollectionFiltersHelper]): collection
-          filters helper.
-      file_entry (Optional[dfvfs.FileEntry]): file entry object being parsed.
       knowledge_base_values (Optional[dict]): knowledge base values.
-      parser_chain (Optional[str]): parsing chain up to this point.
-      timezone (Optional[str]): time zone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
-      ParserMediator: parser mediator.
+      KnowledgeBase: knowledge base.
     """
     knowledge_base_object = knowledge_base.KnowledgeBase()
     if knowledge_base_values:
@@ -72,7 +65,32 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
         else:
           knowledge_base_object.SetValue(identifier, value)
 
-    knowledge_base_object.SetTimeZone(timezone)
+    if time_zone_string:
+      knowledge_base_object.SetTimeZone(time_zone_string)
+
+    return knowledge_base_object
+
+  def _CreateParserMediator(
+      self, storage_writer, collection_filters_helper=None,
+      file_entry=None, knowledge_base_values=None, parser_chain=None,
+      time_zone_string='UTC'):
+    """Creates a parser mediator.
+
+    Args:
+      storage_writer (StorageWriter): storage writer.
+      collection_filters_helper (Optional[CollectionFiltersHelper]): collection
+          filters helper.
+      file_entry (Optional[dfvfs.FileEntry]): file entry object being parsed.
+      knowledge_base_values (Optional[dict]): knowledge base values.
+      parser_chain (Optional[str]): parsing chain up to this point.
+      time_zone_string (Optional[str]): time zone.
+
+    Returns:
+      ParserMediator: parser mediator.
+    """
+    knowledge_base_object = self._CreateKnowledgeBase(
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
 
     parser_mediator = parsers_mediator.ParserMediator(
         knowledge_base_object,
@@ -152,7 +170,7 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
 
   def _ParseFile(
       self, path_segments, parser, collection_filters_helper=None,
-      knowledge_base_values=None, timezone='UTC'):
+      knowledge_base_values=None, time_zone_string='UTC'):
     """Parses a file with a parser and writes results to a storage writer.
 
     Args:
@@ -161,7 +179,7 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
       collection_filters_helper (Optional[CollectionFiltersHelper]): collection
           filters helper.
       knowledge_base_values (Optional[dict]): knowledge base values.
-      timezone (Optional[str]): time zone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
       FakeStorageWriter: storage writer.
@@ -177,11 +195,12 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
         dfvfs_definitions.TYPE_INDICATOR_OS, location=test_file_path)
     return self._ParseFileByPathSpec(
         path_spec, parser, collection_filters_helper=collection_filters_helper,
-        knowledge_base_values=knowledge_base_values, timezone=timezone)
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
 
   def _ParseFileByPathSpec(
       self, path_spec, parser, collection_filters_helper=None,
-      knowledge_base_values=None, timezone='UTC'):
+      knowledge_base_values=None, time_zone_string=None):
     """Parses a file with a parser and writes results to a storage writer.
 
     Args:
@@ -190,17 +209,35 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
       collection_filters_helper (Optional[CollectionFiltersHelper]): collection
           filters helper.
       knowledge_base_values (Optional[dict]): knowledge base values.
-      timezone (Optional[str]): time zone.
+      time_zone_string (Optional[str]): time zone.
 
     Returns:
       FakeStorageWriter: storage writer.
+
+    Raises:
+      SkipTest: if the path inside the test data directory does not exist and
+          the test should be skipped.
     """
+    # TODO: move knowledge base time_zone_string into knowledge_base_values.
+    knowledge_base_object = self._CreateKnowledgeBase(
+        knowledge_base_values=knowledge_base_values,
+        time_zone_string=time_zone_string)
+
+    parser_mediator = parsers_mediator.ParserMediator(
+        knowledge_base_object,
+        collection_filters_helper=collection_filters_helper)
+
     storage_writer = self._CreateStorageWriter()
+    parser_mediator.SetStorageWriter(storage_writer)
+
     file_entry = path_spec_resolver.Resolver.OpenFileEntry(path_spec)
-    parser_mediator = self._CreateParserMediator(
-        storage_writer, collection_filters_helper=collection_filters_helper,
-        file_entry=file_entry, knowledge_base_values=knowledge_base_values,
-        timezone=timezone)
+    parser_mediator.SetFileEntry(file_entry)
+
+    if file_entry:
+      event_data_stream = events.EventDataStream()
+      event_data_stream.path_spec = file_entry.path_spec
+
+      parser_mediator.ProduceEventDataStream(event_data_stream)
 
     if isinstance(parser, interface.FileEntryParser):
       parser.Parse(parser_mediator)
@@ -212,8 +249,11 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
     else:
       parser_type = type(parser)
       self.fail('Unsupported parser type: {0!s}'.format(parser_type))
+<<<<<<< HEAD
 
     self._ProcessEventData(storage_writer)
+=======
+>>>>>>> origin/main
 
     return storage_writer
 
@@ -234,6 +274,14 @@ class ParserTestCase(shared_test_lib.BaseTestCase):
           date_time_value = value.CopyToDateTimeString()
         value = date_time_value
 
+<<<<<<< HEAD
+=======
+      elif isinstance(value, list) and value and isinstance(
+          value[0], dfdatetime_interface.DateTimeValues):
+        value = [date_time_value.CopyToDateTimeStringISO8601()
+                 for date_time_value in value]
+
+>>>>>>> origin/main
       error_message = (
           'event value: "{0:s}" does not match expected value').format(name)
       self.assertEqual(value, expected_value, error_message)

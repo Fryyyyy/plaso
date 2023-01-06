@@ -17,8 +17,9 @@ class McafeeAccessProtectionUnitTest(test_lib.ParserTestCase):
     parser = mcafeeav.McafeeAccessProtectionParser()
     storage_writer = self._ParseFile(['AccessProtectionLog.txt'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 14)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 14)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,6 +29,7 @@ class McafeeAccessProtectionUnitTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
+<<<<<<< HEAD
     # The order in which DSVParser generates events is nondeterministic
     # hence we sort the events.
     events = list(storage_writer.GetSortedEvents())
@@ -38,6 +40,8 @@ class McafeeAccessProtectionUnitTest(test_lib.ParserTestCase):
 
     self.CheckEventValues(storage_writer, events[10], expected_event_values)
 
+=======
+>>>>>>> origin/main
     # TODO: Test that the UTF-8 byte order mark gets removed from
     # the first line.
 
@@ -51,12 +55,16 @@ class McafeeAccessProtectionUnitTest(test_lib.ParserTestCase):
     expected_event_values = {
         'action': 'Action blocked : Terminate',
         'data_type': 'av:mcafee:accessprotectionlog',
+<<<<<<< HEAD
         'date_time': '2013-09-27T14:42:39',
+=======
+>>>>>>> origin/main
         'filename': 'C:\\Windows\\System32\\procexp64.exe',
         'rule': (
             'Common Standard Protection:Prevent termination of McAfee '
             'processes'),
         'status': 'Blocked by Access Protection rule',
+<<<<<<< HEAD
         'timestamp': '2013-09-27 14:42:39.000000',
         'trigger_location': (
             'C:\\Program Files (x86)\\McAfee\\Common Framework\\Frame'
@@ -103,12 +111,16 @@ class McafeeAccessProtectionUnitTest(test_lib.ParserTestCase):
             'processes'),
         'status': 'Blocked by Access Protection rule',
         'timestamp': '2013-09-27 12:42:39.000000',
+=======
+>>>>>>> origin/main
         'trigger_location': (
             'C:\\Program Files (x86)\\McAfee\\Common Framework\\Frame'
             'workService.exe'),
-        'username': 'SOMEDOMAIN\\someUser'}
+        'username': 'SOMEDOMAIN\\someUser',
+        'written_time': '2013-09-27T14:42:39'}
 
-    self.CheckEventValues(storage_writer, events[11], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

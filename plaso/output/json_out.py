@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """Output module that saves data into a JSON format."""
 
-from plaso.output import interface
+import json
+
 from plaso.output import manager
 from plaso.output import shared_json
 
 
-class JSONOutputModule(interface.TextFileOutputModule):
+class JSONOutputModule(shared_json.SharedJSONOutputModule):
   """Output module for the JSON format."""
 
   NAME = 'json'
@@ -14,6 +15,7 @@ class JSONOutputModule(interface.TextFileOutputModule):
 
   def __init__(self):
     """Initializes an output module."""
+<<<<<<< HEAD
     event_formatting_helper = shared_json.JSONEventFormattingHelper()
     super(JSONOutputModule, self).__init__(event_formatting_helper)
     self._event_counter = 0
@@ -21,10 +23,18 @@ class JSONOutputModule(interface.TextFileOutputModule):
   def WriteEventBody(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
     """Writes event values to the output.
+=======
+    super(JSONOutputModule, self).__init__()
+    self._event_counter = 0
+
+  def _WriteFieldValues(self, output_mediator, field_values):
+    """Writes field values to the output.
+>>>>>>> origin/main
 
     Args:
       output_mediator (OutputMediator): mediates interactions between output
           modules and other components, such as storage and dfVFS.
+<<<<<<< HEAD
       event (EventObject): event.
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
@@ -33,11 +43,16 @@ class JSONOutputModule(interface.TextFileOutputModule):
     output_text = self._event_formatting_helper.GetFormattedEvent(
         output_mediator, event, event_data, event_data_stream, event_tag)
 
+=======
+      field_values (dict[str, str]): output field values per name.
+    """
+>>>>>>> origin/main
     if self._event_counter != 0:
       self.WriteText(', ')
 
+    json_string = json.dumps(field_values, sort_keys=True)
     output_text = '"event_{0:d}": {1:s}\n'.format(
-        self._event_counter, output_text)
+        self._event_counter, json_string)
     self.WriteText(output_text)
 
     self._event_counter += 1

@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Plug-in to collect the Less Frequently Used Keys."""
+"""Plug-in to collect the Less Frequently Used (LFU) keys."""
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.parsers import winreg_parser
 from plaso.parsers.winreg_plugins import interface
 
@@ -13,6 +11,8 @@ class WindowsBootExecuteEventData(events.EventData):
 
   Attributes:
     key_path (str): Windows Registry key path.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
     value (str): boot execute value, contains the value obtained from
         the BootExecute Registry value.
   """
@@ -24,6 +24,7 @@ class WindowsBootExecuteEventData(events.EventData):
     super(WindowsBootExecuteEventData, self).__init__(
         data_type=self.DATA_TYPE)
     self.key_path = None
+    self.last_written_time = None
     self.value = None
 
 
@@ -34,6 +35,8 @@ class WindowsBootVerificationEventData(events.EventData):
     image_path (str): location of the boot verification executable, contains
         the value obtained from the ImagePath Registry value.
     key_path (str): Windows Registry key path.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
   """
 
   DATA_TYPE = 'windows:registry:boot_verification'
@@ -44,6 +47,7 @@ class WindowsBootVerificationEventData(events.EventData):
         data_type=self.DATA_TYPE)
     self.image_path = None
     self.key_path = None
+    self.last_written_time = None
 
 
 class BootVerificationPlugin(interface.WindowsRegistryPlugin):
@@ -62,7 +66,7 @@ class BootVerificationPlugin(interface.WindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
     """
     image_path = None
@@ -74,10 +78,9 @@ class BootVerificationPlugin(interface.WindowsRegistryPlugin):
       event_data = WindowsBootVerificationEventData()
       event_data.key_path = registry_key.path
       event_data.image_path = image_path
+      event_data.last_written_time = registry_key.last_written_time
 
-      event = time_events.DateTimeValuesEvent(
-          registry_key.last_written_time, definitions.TIME_DESCRIPTION_WRITTEN)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
+      parser_mediator.ProduceEventData(event_data)
 
     self._ProduceDefaultWindowsRegistryEvent(
         parser_mediator, registry_key, names_to_skip=['ImagePath'])
@@ -99,7 +102,7 @@ class BootExecutePlugin(interface.WindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
     """
     registry_value = registry_key.GetValueByName('BootExecute')
@@ -122,12 +125,10 @@ class BootExecutePlugin(interface.WindowsRegistryPlugin):
       if boot_execute:
         event_data = WindowsBootExecuteEventData()
         event_data.key_path = registry_key.path
+        event_data.last_written_time = registry_key.last_written_time
         event_data.value = boot_execute
 
-        event = time_events.DateTimeValuesEvent(
-            registry_key.last_written_time,
-            definitions.TIME_DESCRIPTION_WRITTEN)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
+        parser_mediator.ProduceEventData(event_data)
 
     self._ProduceDefaultWindowsRegistryEvent(
         parser_mediator, registry_key, names_to_skip=['BootExecute'])

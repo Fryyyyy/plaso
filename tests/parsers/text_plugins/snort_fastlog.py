@@ -16,11 +16,11 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
     """Tests the Process function with a Snort fast-log alert log file."""
     plugin = snort_fastlog.SnortFastLogTextPlugin()
     storage_writer = self._ParseTextFileWithPlugin(
-        ['snort3_alert_fast.log'], plugin,
-        knowledge_base_values={'year': 2021})
+        ['snort3_alert_fast.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -30,26 +30,22 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetSortedEvents())
-
-    # Test the following single line entry in snort3-format that has
-    # no classification-field:
-    #
-    # 12/28-12:55:38.765402 [**] [1:366:11] "PROTOCOL-ICMP PING Unix"
-    # [**] [Priority: 3] {ICMP} 2001:df1:c200:c:0:0:0:35 ->
-    # 2001:4860:4860::8888
-
     expected_event_values = {
         'classification': None,
         'data_type': 'snort:fastlog:alert',
+<<<<<<< HEAD
         'date_time': '2021-12-28T12:55:38.765402',
+=======
+>>>>>>> origin/main
         'destination_ip': '2001:4860:4860:0:0:0:0:8888',
         'message': 'PROTOCOL-ICMP PING Unix',
+        'last_written_time': '0000-12-28T12:55:38.765402',
         'priority': 3,
         'protocol': 'ICMP',
         'rule_identifier': '1:366:11',
         'source_ip': '2001:df1:c200:c:0:0:0:35'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
 
     # Test the following single line entry in snort3-format that has
@@ -115,6 +111,10 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
         'source_port': 60884}
 
     self.CheckEventValues(storage_writer, events[3], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   def testProcessWithSuricataLog(self):
     """Tests the Process function with a Suricata fast-log alert log file."""
@@ -122,8 +122,9 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
     storage_writer = self._ParseTextFileWithPlugin(
         ['suricata_alert_fast.log'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 5)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 5)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -133,21 +134,16 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetSortedEvents())
-
-    # Test the following single line entry in suricata-format:
-    #
-    # 10/05/10-10:08:59.667372 [**] [1:2009187:4] ET WEB_CLIENT ACTIVEX
-    # iDefense COMRaider ActiveX Control Arbitrary File Deletion
-    # [**] [Classification: Web Application Attack] [Priority: 3]
-    # {TCP} 11.11.232.144:80 -> 192.168.1.4:56068
-
     expected_event_values = {
         'classification': 'Web Application Attack',
         'data_type': 'snort:fastlog:alert',
+<<<<<<< HEAD
         'date_time': '2010-05-10T10:08:59.667372',
+=======
+>>>>>>> origin/main
         'destination_ip': '192.168.1.4',
         'destination_port': 56068,
+        'last_written_time': '2010-05-10T10:08:59.667372',
         'message': (
             'ET WEB_CLIENT ACTIVEX iDefense COMRaider ActiveX Control '
             'Arbitrary File Deletion'),
@@ -157,6 +153,7 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
         'source_ip': '11.11.232.144',
         'source_port': 80}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
 
     # Test the following single line entry in suricata-format that has
@@ -243,6 +240,10 @@ class SnortFastLogTextPluginTest(test_lib.TextPluginTestCase):
         'source_port': 60884}
 
     self.CheckEventValues(storage_writer, events[4], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   # TODO: add with time zone test.
 

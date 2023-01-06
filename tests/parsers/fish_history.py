@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Tests for Fish History file parser."""
@@ -18,8 +17,9 @@ class FishHistoryTest(test_lib.ParserTestCase):
     parser = fish_history.FishHistoryParser()
     storage_writer = self._ParseFile(['fish_history'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 10)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 10)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -29,10 +29,9 @@ class FishHistoryTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'command': 'll',
+<<<<<<< HEAD
         'data_type': 'fish:history:command',
         'date_time': '2021-04-29T22:53:00+00:00'}
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
@@ -90,6 +89,13 @@ class FishHistoryTest(test_lib.ParserTestCase):
         'data_type': 'fish:history:command',
         'date_time': '2021-07-11T02:58:35+00:00'}
     self.CheckEventValues(storage_writer, events[9], expected_event_values)
+=======
+        'data_type': 'fish:history:entry',
+        'written_time': '2021-04-29T22:53:00+00:00'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

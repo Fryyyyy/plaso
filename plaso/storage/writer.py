@@ -94,8 +94,7 @@ class StorageWriter(reader.StorageReader):
 
     event_tag = self._event_tag_per_event_identifier.get(lookup_key, None)
     if not event_tag:
-      filter_expression = '_event_row_identifier == {0:d}'.format(
-          event_identifier.sequence_number)
+      filter_expression = '_event_identifier == "{0:s}"'.format(lookup_key)
 
       generator = self._store.GetAttributeContainers(
           self._CONTAINER_TYPE_EVENT_TAG, filter_expression=filter_expression)
@@ -182,14 +181,24 @@ class StorageWriter(reader.StorageReader):
     self._store.Close()
     self._store = None
 
-  # TODO: remove this helper method, currently only used by parser tests.
-  def GetEvents(self):
-    """Retrieves the events.
+  @abc.abstractmethod
+  def GetFirstWrittenEventData(self):
+    """Retrieves the first event data that was written after open.
+
+    Using GetFirstWrittenEventData and GetNextWrittenEventData newly
+    added event data can be retrieved in order of addition.
 
     Returns:
-      generator(EventObject): event generator.
+      EventData: event data or None if there are no newly written ones.
     """
-    return self.GetAttributeContainers(self._CONTAINER_TYPE_EVENT)
+
+  @abc.abstractmethod
+  def GetNextWrittenEventData(self):
+    """Retrieves the next event data that was written after open.
+
+    Returns:
+      EventData: event data or None if there are no newly written ones.
+    """
 
   @abc.abstractmethod
   def GetFirstWrittenEventData(self):

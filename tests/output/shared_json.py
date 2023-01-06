@@ -17,8 +17,8 @@ from tests.containers import test_lib as containers_test_lib
 from tests.output import test_lib
 
 
-class JSONEventFormattingHelperTest(test_lib.OutputModuleTestCase):
-  """Tests the JSON output module event formatting helper."""
+class SharedJSONOutputModuleTest(test_lib.OutputModuleTestCase):
+  """Tests the shared functionality for JSON based output modules."""
 
   # pylint: disable=protected-access
 
@@ -39,15 +39,15 @@ class JSONEventFormattingHelperTest(test_lib.OutputModuleTestCase):
        'timestamp_desc': definitions.TIME_DESCRIPTION_UNKNOWN,
        'username': 'root'}]
 
-  def testWriteSerializedDict(self):
-    """Tests the _WriteSerializedDict function."""
+  def testGetFieldValues(self):
+    """Tests the _GetFieldValues function."""
     output_mediator = self._CreateOutputMediator()
 
     formatters_directory_path = self._GetTestFilePath(['formatters'])
     output_mediator.ReadMessageFormattersFromDirectory(
         formatters_directory_path)
 
-    formatting_helper = shared_json.JSONEventFormattingHelper()
+    output_module = shared_json.SharedJSONOutputModule()
 
     event, event_data, event_data_stream = (
         containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
@@ -64,7 +64,7 @@ class JSONEventFormattingHelperTest(test_lib.OutputModuleTestCase):
       expected_os_location = '{0:s}{1:s}'.format(
           os.path.sep, os.path.join('cases', 'image.dd'))
 
-    expected_json_dict = {
+    expected_field_values = {
         '__container_type__': 'event',
         '__type__': 'AttributeContainer',
         'date_time': {
@@ -96,56 +96,12 @@ class JSONEventFormattingHelperTest(test_lib.OutputModuleTestCase):
             'session\n closed for user root)'),
         'timestamp': expected_timestamp,
         'timestamp_desc': definitions.TIME_DESCRIPTION_UNKNOWN,
-        'username': 'root',
-    }
-    json_dict = formatting_helper._WriteSerializedDict(
+        'username': 'root'}
+
+    field_values = output_module._GetFieldValues(
         output_mediator, event, event_data, event_data_stream, None)
 
-    self.assertEqual(json_dict, expected_json_dict)
-
-  def testGetFormattedEvent(self):
-    """Tests the GetFormattedEvent function."""
-    output_mediator = self._CreateOutputMediator()
-
-    formatters_directory_path = self._GetTestFilePath(['formatters'])
-    output_mediator.ReadMessageFormattersFromDirectory(
-        formatters_directory_path)
-
-    formatting_helper = shared_json.JSONEventFormattingHelper()
-
-    event, event_data, event_data_stream = (
-        containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
-
-    if sys.platform.startswith('win'):
-      # The dict comparison is very picky on Windows hence we
-      # have to make sure the drive letter is in the same case.
-      expected_os_location = os.path.abspath('\\{0:s}'.format(
-          os.path.join('cases', 'image.dd')))
-      expected_os_location = expected_os_location.replace('\\', '\\\\')
-    else:
-      expected_os_location = '{0:s}{1:s}'.format(
-          os.path.sep, os.path.join('cases', 'image.dd'))
-
-    expected_json_string = (
-        '{{"__container_type__": "event", "__type__": "AttributeContainer", '
-        '"data_type": "test:event", "date_time": {{"__class_name__": '
-        '"PosixTimeInMicroseconds", "__type__": "DateTimeValues", "timestamp": '
-        '1340821021000000}}, "display_name": "TSK:/var/log/syslog.1", '
-        '"filename": "/var/log/syslog.1", "hostname": "ubuntu", "inode": '
-        '"15", "message": "Reporter <CRON> PID: |8442| '
-        '(pam_unix(cron:session): session closed for user root)", "pathspec": '
-        '{{"__type__": "PathSpec", "inode": 15, "location": '
-        '"/var/log/syslog.1", "parent": {{"__type__": "PathSpec", "location": '
-        '"{0:s}", "type_indicator": "OS"}}, "type_indicator": "TSK"}}, "text": '
-        '"Reporter <CRON> PID: |8442| (pam_unix(cron:session): session\\n '
-        'closed for user root)", "timestamp": 1340821021000000, '
-        '"timestamp_desc": "Unknown Time", "username": "root"}}').format(
-            expected_os_location)
-
-    json_string = formatting_helper.GetFormattedEvent(
-        output_mediator, event, event_data, event_data_stream, None)
-
-    self.assertEqual(json_string, expected_json_string)
+    self.assertEqual(field_values, expected_field_values)
 
 
 if __name__ == '__main__':

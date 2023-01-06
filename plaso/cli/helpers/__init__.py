@@ -5,6 +5,7 @@ from plaso.cli.helpers import analysis_plugins
 from plaso.cli.helpers import archives
 from plaso.cli.helpers import artifact_definitions
 from plaso.cli.helpers import artifact_filters
+from plaso.cli.helpers import codepage
 from plaso.cli.helpers import data_location
 from plaso.cli.helpers import date_filters
 from plaso.cli.helpers import dynamic_output
@@ -25,7 +26,6 @@ from plaso.cli.helpers import status_view
 from plaso.cli.helpers import storage_format
 from plaso.cli.helpers import tagging_analysis
 from plaso.cli.helpers import temporary_directory
-from plaso.cli.helpers import text_prepend
 from plaso.cli.helpers import viper_analysis
 from plaso.cli.helpers import virustotal_analysis
 from plaso.cli.helpers import xlsx_output

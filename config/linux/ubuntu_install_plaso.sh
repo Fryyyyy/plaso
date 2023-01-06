@@ -47,6 +47,7 @@ PYTHON_DEPENDENCIES="libbde-python3
                      libvsgpt-python3
                      libvshadow-python3
                      libvslvm-python3
+                     python3-acstore
                      python3-artifacts
                      python3-bencode
                      python3-certifi
@@ -82,9 +83,7 @@ PYTHON_DEPENDENCIES="libbde-python3
 TEST_DEPENDENCIES="python3-distutils
                    python3-fakeredis
                    python3-mock
-                   python3-pbr
-                   python3-setuptools
-                   python3-sortedcontainers";
+                   python3-setuptools";
 
 # Additional dependencies for development, alphabetized, one per line.
 DEVELOPMENT_DEPENDENCIES="pylint

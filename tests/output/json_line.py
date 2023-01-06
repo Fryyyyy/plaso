@@ -41,6 +41,7 @@ class JSONLinesOutputTest(test_lib.OutputModuleTestCase):
        'timestamp_desc': definitions.TIME_DESCRIPTION_UNKNOWN,
        'username': 'root'}]
 
+<<<<<<< HEAD
   def testWriteHeader(self):
     """Tests the WriteHeader function."""
     test_file_object = io.StringIO()
@@ -68,6 +69,10 @@ class JSONLinesOutputTest(test_lib.OutputModuleTestCase):
 
   def testWriteEventBody(self):
     """Tests the WriteEventBody function."""
+=======
+  def testWriteFieldValues(self):
+    """Tests the _WriteFieldValues function."""
+>>>>>>> origin/main
     test_file_object = io.StringIO()
 
     output_mediator = self._CreateOutputMediator()
@@ -82,8 +87,16 @@ class JSONLinesOutputTest(test_lib.OutputModuleTestCase):
     event, event_data, event_data_stream = (
         containers_test_lib.CreateEventFromValues(self._TEST_EVENTS[0]))
 
+<<<<<<< HEAD
     output_module.WriteEventBody(
         output_mediator, event, event_data, event_data_stream, None)
+=======
+    # TODO: add test for event_tag.
+    field_values = output_module._GetFieldValues(
+        output_mediator, event, event_data, event_data_stream, None)
+
+    output_module._WriteFieldValues(output_mediator, field_values)
+>>>>>>> origin/main
 
     expected_timestamp = shared_test_lib.CopyTimestampFromString(
         '2012-06-27 18:17:01')

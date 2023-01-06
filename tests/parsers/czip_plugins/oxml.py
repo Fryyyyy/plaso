@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers.czip_plugins import oxml
 
 from tests.parsers.czip_plugins import test_lib
@@ -75,55 +74,14 @@ class OXMLTest(test_lib.CompoundZIPPluginTestCase):
         self._RELATIONSHIPS_XML_DATA)
     self.assertEqual(property_files, expected_property_files)
 
-  def testProduceEvent(self):
-    """Tests the _ProduceEvent function."""
-    plugin = oxml.OpenXMLPlugin()
-
-    storage_writer = self._CreateStorageWriter()
-    parser_mediator = self._CreateParserMediator(storage_writer)
-    event_data = oxml.OpenXMLEventData()
-
-    properties = plugin._ParsePropertiesXMLFile(self._PROPERTIES_XML_DATA)
-
-    # Test parsing a date and time string in intervals of 1 s.
-    plugin._ProduceEvent(
-        parser_mediator, event_data, properties, 'modified',
-        definitions.TIME_DESCRIPTION_MODIFICATION, 'modification time')
-
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
-
-    number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
-        'extraction_warning')
-    self.assertEqual(number_of_warnings, 0)
-
-    number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
-        'recovery_warning')
-    self.assertEqual(number_of_warnings, 0)
-
-    # Test parsing a date and time string in intervals of 100 ns.
-    plugin._ProduceEvent(
-        parser_mediator, event_data, properties, 'created',
-        definitions.TIME_DESCRIPTION_CREATION, 'creation time')
-
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 2)
-
-    number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
-        'extraction_warning')
-    self.assertEqual(number_of_warnings, 0)
-
-    number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
-        'recovery_warning')
-    self.assertEqual(number_of_warnings, 0)
-
   def testParseFileObject(self):
     """Tests the ParseFileObject function."""
     plugin = oxml.OpenXMLPlugin()
     storage_writer = self._ParseZIPFileWithPlugin(['Document.docx'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 2)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -133,9 +91,8 @@ class OXMLTest(test_lib.CompoundZIPPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'data_type': 'metadata:openxml',
         'date_time': '2012-11-07T23:29:00+00:00',
         'timestamp_desc': definitions.TIME_DESCRIPTION_CREATION}
@@ -151,20 +108,35 @@ class OXMLTest(test_lib.CompoundZIPPluginTestCase):
         'doc_security': '0',
         'hyperlinks_changed': 'false',
         'i4': '1',
+=======
+        'application': 'Microsoft Office Word',
+        'application_version': '14.0000',
+        'author': 'Nides',
+        'creation_time': '2012-11-07T23:29:00.000000+00:00',
+        'data_type': 'openxml:metadata',
+        'edit_duration': 1385,
+        'hyperlinks_changed': False,
+        'last_printed_time': None,
+>>>>>>> origin/main
         'last_saved_by': 'Nides',
-        'links_up_to_date': 'false',
-        'number_of_characters': '13',
-        'number_of_characters_with_spaces': '14',
-        'number_of_lines': '1',
-        'number_of_pages': '1',
-        'number_of_paragraphs': '1',
-        'number_of_words': '2',
-        'revision_number': '3',
-        'scale_crop': 'false',
-        'template': 'Normal.dotm',
-        'total_time': '1385'}
+        'links_up_to_date': False,
+        'modification_time': '2013-08-25T22:18:00.000000+00:00',
+        'number_of_characters': 13,
+        'number_of_characters_with_spaces': 14,
+        'number_of_clips': None,
+        'number_of_hidden_slides': None,
+        'number_of_lines': 1,
+        'number_of_pages': 1,
+        'number_of_paragraphs': 1,
+        'number_of_slides': None,
+        'number_of_words': 2,
+        'revision_number': 3,
+        'scale': False,
+        'security_flags': 0,
+        'template': 'Normal.dotm'}
 
-    self.CheckEventValues(storage_writer, events[1], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

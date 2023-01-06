@@ -18,8 +18,14 @@ class WinDefenderHistoryUnitTest(test_lib.ParserTestCase):
     storage_writer = self._ParseFile([
         'FC380697-A68D-4C94-B67F-9B6449039463'], parser)
 
+<<<<<<< HEAD
     number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
     self.assertEqual(number_of_events, 1)
+=======
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
+>>>>>>> origin/main
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -37,6 +43,7 @@ class WinDefenderHistoryUnitTest(test_lib.ParserTestCase):
         'filename': 'C:\\Users\\testuser\\Downloads\\PotentiallyUnwanted.exe',
         'host_and_user': 'FRYPTOP\\testuser',
         'process': 'C:\\Windows\\explorer.exe',
+        'recorded_time': '2022-07-22T05:32:27.8302783+00:00',
         'sha256': (
             'd6f6c6b9fde37694e12b12009ad11ab9ec8dd0f193e7319c523933bdad8a50ad'),
         'threat_name': 'PUA:Win32/EICAR_Test_File',
@@ -45,13 +52,22 @@ class WinDefenderHistoryUnitTest(test_lib.ParserTestCase):
             'http://amtso.eicar.org/PotentiallyUnwanted.exe|'
             'pid:19588,ProcessStart:133029415464710822')]}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   def testContainerDetection(self):
     """Tests parsing a containerfile Detection History file."""
     parser = windefender_history.WinDefenderHistoryParser()
     storage_writer = self._ParseFile([
-      '6AFE33A0-19BA-4FFF-892F-B700539D7D63'], parser)
+        '6AFE33A0-19BA-4FFF-892F-B700539D7D63'], parser)
+
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
     self.assertEqual(number_of_events, 1)
@@ -74,6 +90,7 @@ class WinDefenderHistoryUnitTest(test_lib.ParserTestCase):
         'filename': 'C:\\Users\\testuser\\Downloads\\eicar_com.zip->eicar.com',
         'host_and_user': 'FRYPTOP\\testuser',
         'process': 'Unknown',
+        'recorded_time': '2022-07-22T05:36:18.9094421+00:00',
         'sha256': (
             '275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f'),
         'threat_name': 'Virus:DOS/EICAR_Test_File',
@@ -82,7 +99,12 @@ class WinDefenderHistoryUnitTest(test_lib.ParserTestCase):
             'https://secure.eicar.org/eicar_com.zip|'
             'pid:20580,ProcessStart:133029417782902463')]}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

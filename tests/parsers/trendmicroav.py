@@ -17,8 +17,9 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
     parser = trendmicroav.OfficeScanVirusDetectionParser()
     storage_writer = self._ParseFile(['pccnt35.log'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 3)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 3)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,6 +29,7 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
+<<<<<<< HEAD
     # The order in which DSVParser generates events is nondeterministic
     # hence we sort the events.
     events = list(storage_writer.GetSortedEvents())
@@ -40,6 +42,8 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
 
     # The third and last event has been edited to match the older, documented
     # format for log lines (without a Unix timestamp).
+=======
+>>>>>>> origin/main
     expected_event_values = {
         'action': 10,
         'data_type': 'av:trendmicro:scan',
@@ -48,9 +52,28 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
         'path': 'C:\\temp\\',
         'scan_type': 1,
         'threat': 'Eicar_test_1',
+<<<<<<< HEAD
         'timestamp': '2018-01-30 14:46:00.000000'}
+=======
+        'written_time': '2018-01-30T14:45:32+00:00'}
+>>>>>>> origin/main
 
-    self.CheckEventValues(storage_writer, events[2], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
+
+    # The third and last log entry has been edited to match the older,
+    # documented format for log lines (without a POSIX timestamp).
+    expected_event_values = {
+        'action': 10,
+        'data_type': 'av:trendmicro:scan',
+        'filename': 'eicar.com_.gstmp',
+        'path': 'C:\\temp\\',
+        'scan_type': 1,
+        'threat': 'Eicar_test_1',
+        'written_time': '2018-01-30T14:46:00'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
 
   def testParseWithTimeZone(self):
     """Tests the Parse function with a time zone."""
@@ -91,8 +114,9 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
     parser = trendmicroav.OfficeScanWebReputationParser()
     storage_writer = self._ParseFile(['OfcUrlf.log'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -102,6 +126,7 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
+<<<<<<< HEAD
     # The order in which DSVParser generates events is nondeterministic
     # hence we sort the events.
     events = list(storage_writer.GetSortedEvents())
@@ -112,6 +137,8 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
 
     self.CheckEventValues(storage_writer, events[1], expected_event_values)
 
+=======
+>>>>>>> origin/main
     expected_event_values = {
         'application_name': 'C:\\Users\\user\\Downloads\\wget.exe',
         'block_mode': 1,
@@ -123,9 +150,11 @@ class TrendMicroUnitTest(test_lib.ParserTestCase):
         'group_name': 'Malware Accomplice',
         'policy_identifier': 1,
         'threshold': 0,
-        'url': 'http://www.eicar.org/download/eicar.com'}
+        'url': 'http://www.eicar.org/download/eicar.com',
+        'written_time': '2018-01-23T13:17:02+00:00'}
 
-    self.CheckEventValues(storage_writer, events[2], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

@@ -117,20 +117,30 @@ class ESEDBParser(interface.FileObjectParser):
     # Compare the list of available plugin objects.
     cache = ESEDBCache()
     try:
-      for plugin in self._plugins:
+      for plugin_name, plugin in self._plugins_per_name.items():
         if parser_mediator.abort:
           break
 
         file_entry = parser_mediator.GetFileEntry()
         display_name = parser_mediator.GetDisplayName(file_entry)
+        profiling_name = '/'.join([self.NAME, plugin.NAME])
 
-        if not plugin.CheckRequiredTables(database):
+        parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
+        try:
+          result = plugin.CheckRequiredTables(database)
+        finally:
+          parser_mediator.SampleFormatCheckStopTiming(profiling_name)
+
+        if not result:
           logger.debug('Skipped parsing file: {0:s} with plugin: {1:s}'.format(
-              display_name, plugin.NAME))
+              display_name, plugin_name))
           continue
 
         logger.debug('Parsing file: {0:s} with plugin: {1:s}'.format(
-            display_name, plugin.NAME))
+            display_name, plugin_name))
+
+        parser_mediator.SampleStartTiming(profiling_name)
 
         try:
           plugin.UpdateChainAndProcess(
@@ -139,7 +149,10 @@ class ESEDBParser(interface.FileObjectParser):
         except Exception as exception:  # pylint: disable=broad-except
           parser_mediator.ProduceExtractionWarning((
               'plugin: {0:s} unable to parse ESE database with error: '
-              '{1!s}').format(plugin.NAME, exception))
+              '{1!s}').format(plugin_name, exception))
+
+        finally:
+          parser_mediator.SampleStopTiming(profiling_name)
 
     finally:
       # TODO: explicitly clean up cache.

@@ -30,6 +30,7 @@ class SessionTest(shared_test_lib.BaseTestCase):
         'identifier',
         'parser_filter_expression',
         'parsers_counter',
+        'preferred_codepage',
         'preferred_encoding',
         'preferred_language',
         'preferred_time_zone',
@@ -37,8 +38,7 @@ class SessionTest(shared_test_lib.BaseTestCase):
         'product_name',
         'product_version',
         'source_configurations',
-        'start_time',
-        'text_prepend']
+        'start_time']
 
     attribute_names = sorted(attribute_container.GetAttributeNames())
 
@@ -133,12 +133,12 @@ class SessionConfiguration(shared_test_lib.BaseTestCase):
         'filter_file',
         'identifier',
         'parser_filter_expression',
+        'preferred_codepage',
         'preferred_encoding',
         'preferred_language',
         'preferred_time_zone',
         'preferred_year',
-        'source_configurations',
-        'text_prepend']
+        'source_configurations']
 
     attribute_names = sorted(attribute_container.GetAttributeNames())
 

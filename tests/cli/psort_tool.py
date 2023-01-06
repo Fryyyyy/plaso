@@ -222,16 +222,19 @@ Test argument parser.
 
     options = test_lib.TestOptions()
     options.output_format = 'null'
+    options.status_view_interval = 0.5
     options.storage_file = self._GetTestFilePath(['psort_test.plaso'])
 
     test_tool.ParseOptions(options)
 
     options = test_lib.TestOptions()
+    options.status_view_interval = 0.5
 
     with self.assertRaises(errors.BadConfigOption):
       test_tool.ParseOptions(options)
 
     options = test_lib.TestOptions()
+    options.status_view_interval = 0.5
     options.storage_file = self._GetTestFilePath(['psort_test.plaso'])
 
     with self.assertRaises(errors.BadConfigOption):
@@ -250,6 +253,7 @@ Test argument parser.
     options = test_lib.TestOptions()
     options.data_location = shared_test_lib.DATA_PATH
     options.dynamic_time = True
+    options.status_view_interval = 0.5
     options.storage_file = self._GetTestFilePath(['psort_test.plaso'])
     options.output_format = 'test_missing'
 
@@ -274,10 +278,9 @@ Test argument parser.
     self.assertEqual(TestOutputModuleMissingParameters.parameters, 'foobar')
 
     expected_line = (
-        '2021-11-21T16:57:33.061054974+00:00,Last Access Time,FILE,File stat,'
-        'OS:/tmp/test/test_data/syslog Type: file Owner identifier: 1000 '
-        'Group identifier: 1000 Mode: 0o664 Number of links: 1,filestat,'
-        'OS:/tmp/test/test_data/syslog,-')
+        '2013-12-31T17:54:32+00:00,Content Modification Time,LOG,Log File,'
+        '[/sbin/anacron  pid: 1234] Another one just like this (124 job run),'
+        'syslog,OS:/tmp/test/test_data/syslog,-')
     self.assertIn(expected_line, lines)
 
     output_manager.OutputManager.DeregisterOutput(

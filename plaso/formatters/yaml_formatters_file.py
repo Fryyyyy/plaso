@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """YAML-based formatters file."""
 
-import io
 import yaml
 
 from plaso.formatters import interface
@@ -11,7 +10,9 @@ from plaso.lib import errors
 class YAMLFormattersFile(object):
   """YAML-based formatters file.
 
-  A YAML-based formatters file contains one or more event formatters.
+  A YAML-based formatters file contains one or more event formatter
+  definitions. An event formatter definition consists of:
+
   type: 'conditional'
   data_type: 'fs:stat'
   message:
@@ -20,6 +21,8 @@ class YAMLFormattersFile(object):
   - '({unallocated})'
   short_message:
   - '{filename}'
+  short_source: 'FILE'
+  source: 'File stat'
 
   Where:
   * type, defines the formatter data type, which can be "basic" or
@@ -28,6 +31,8 @@ class YAMLFormattersFile(object):
   * message, defines a list of message string pieces;
   * separator, defines the message and short message string pieces separator;
   * short_message, defines the short message string pieces;
+  * short_source, defines the short source description;
+  * source, defines the source description.
   """
 
   _SUPPORTED_KEYS = frozenset([
@@ -39,6 +44,8 @@ class YAMLFormattersFile(object):
       'message',
       'separator',
       'short_message',
+      'short_source',
+      'source',
       'type'])
 
   def _ReadBooleanHelpers(self, formatter, boolean_helpers_definition_values):
@@ -204,12 +211,26 @@ class YAMLFormattersFile(object):
     message = formatter_definition_values.get('message', None)
     if not message:
       raise errors.ParseError(
-          'Invalid event formatter definition missing message.')
+          'Invalid event formatter definition: {0:s} missing message.'.format(
+              data_type))
 
     short_message = formatter_definition_values.get('short_message', None)
     if not short_message:
+      raise errors.ParseError((
+          'Invalid event formatter definition: {0:s} missing short '
+          'message.').format(data_type))
+
+    short_source = formatter_definition_values.get('short_source', None)
+    if not short_source:
+      raise errors.ParseError((
+          'Invalid event formatter definition: {0:s} missing short '
+          'source.').format(data_type))
+
+    source = formatter_definition_values.get('source', None)
+    if not source:
       raise errors.ParseError(
-          'Invalid event formatter definition missing short message.')
+          'Invalid event formatter definition: {0:s} missing source.'.format(
+              data_type))
 
     if formatter_type == 'basic':
       formatter = interface.BasicEventFormatter(
@@ -236,6 +257,9 @@ class YAMLFormattersFile(object):
     flags_helpers = formatter_definition_values.get('flags_helpers', [])
     self._ReadFlagsHelpers(formatter, flags_helpers)
 
+    if short_source and source:
+      formatter.source_mapping = (short_source, source)
+
     return formatter
 
   def _ReadFromFileObject(self, file_object):
@@ -245,7 +269,7 @@ class YAMLFormattersFile(object):
       file_object (file): formatters file-like object.
 
     Yields:
-      EventFormatter: event formatters.
+      EventFormatter: an event formatter.
     """
     yaml_generator = yaml.safe_load_all(file_object)
 
@@ -253,13 +277,14 @@ class YAMLFormattersFile(object):
       yield self._ReadFormatterDefinition(yaml_definition)
 
   def ReadFromFile(self, path):
-    """Reads the event formatters from the YAML-based formatters file.
+    """Reads the event formatters from a YAML file.
 
     Args:
       path (str): path to a formatters file.
 
-    Returns:
-      list[EventFormatter]: event formatters.
+    Yields:
+      EventFormatter: an event formatter.
     """
-    with io.open(path, 'r', encoding='utf-8') as file_object:
-      return list(self._ReadFromFileObject(file_object))
+    with open(path, 'r', encoding='utf-8') as file_object:
+      for yaml_definition in self._ReadFromFileObject(file_object):
+        yield yaml_definition

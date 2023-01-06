@@ -4,9 +4,12 @@
 import collections
 import heapq
 import os
+<<<<<<< HEAD
 
 from dfdatetime import interface as dfdatetime_interface
 from dfvfs.path import path_spec as dfvfs_path_spec
+=======
+>>>>>>> origin/main
 
 from plaso.containers import events
 from plaso.engine import processing_status
@@ -22,19 +25,12 @@ from plaso.storage import time_range as storage_time_range
 class PsortEventHeap(object):
   """Psort event heap."""
 
-  _IDENTIFIER_EXCLUDED_ATTRIBUTES = frozenset([
-      'data_type',
-      'parser',
-      'tag',
-      'timestamp',
-      'timestamp_desc'])
-
-  _MAXIMUM_CACHED_IDENTIFIERS = 500000
+  _MAXIMUM_CACHED_HASHES = 500000
 
   def __init__(self):
     """Initializes a psort events heap."""
     super(PsortEventHeap, self).__init__()
-    self._event_data_content_identifier_cache = collections.OrderedDict()
+    self._event_values_hash_cache = collections.OrderedDict()
     self._heap = []
 
   @property
@@ -42,6 +38,7 @@ class PsortEventHeap(object):
     """int: number of events on the heap."""
     return len(self._heap)
 
+<<<<<<< HEAD
   def _GetEventDataContentIdentifier(self, event_data, event_data_stream):
     """Retrieves the event data content identifier.
 
@@ -157,6 +154,8 @@ class PsortEventHeap(object):
 
     return macb_group_identifier, content_identifier
 
+=======
+>>>>>>> origin/main
   def PopEvent(self):
     """Pops an event from the heap.
 
@@ -171,12 +170,9 @@ class PsortEventHeap(object):
         EventDataStream: event data stream.
     """
     try:
-      (macb_group_identifier, content_identifier, event, event_data,
+      (event_values_hash, _, event, event_data,
        event_data_stream) = heapq.heappop(self._heap)
-      if macb_group_identifier == '':
-        macb_group_identifier = None
-      return (macb_group_identifier, content_identifier, event, event_data,
-              event_data_stream)
+      return event_values_hash, event, event_data, event_data_stream
 
     except IndexError:
       return None
@@ -207,15 +203,36 @@ class PsortEventHeap(object):
       event_data (EventData): event data.
       event_data_stream (EventDataStream): event data stream.
     """
-    macb_group_identifier, content_identifier = self._GetEventIdentifiers(
-        event, event_data, event_data_stream)
+    event_values_hash = getattr(event_data, '_event_values_hash', None)
 
-    # We can ignore the timestamp here because the psort engine only stores
-    # events with the same timestamp in the event heap.
-    heap_values = (
-        macb_group_identifier or '', content_identifier, event, event_data,
-        event_data_stream)
-    heapq.heappush(self._heap, heap_values)
+    if not event_values_hash:
+      # Note that this is kept for backwards compatibility for event_data
+      # containers that do not have a _event_values_hash attribute value.
+      event_data_identifier = event_data.GetIdentifier()
+      lookup_key = event_data_identifier.CopyToString()
+
+      event_values_hash = self._event_values_hash_cache.get(lookup_key, None)
+      if not event_values_hash:
+        event_values_hash = events.CalculateEventValuesHash(
+            event_data, event_data_stream)
+        if len(self._event_values_hash_cache) >= self._MAXIMUM_CACHED_HASHES:
+          self._event_values_hash_cache.popitem(last=True)
+
+        self._event_values_hash_cache[lookup_key] = event_values_hash
+
+      self._event_values_hash_cache.move_to_end(lookup_key, last=False)
+
+    timestamp_desc = event.timestamp_desc
+    if timestamp_desc is None:
+      logger.warning('Missing timestamp_desc attribute')
+      timestamp_desc = definitions.TIME_DESCRIPTION_UNKNOWN
+
+    # Note that only events with the same timestamp are stored in the event
+    # heap. The event values hash is stored first to cluster events with
+    # similar event values.
+    heapq.heappush(self._heap, (
+        event_values_hash, timestamp_desc, event, event_data,
+        event_data_stream))
 
 
 class OutputAndFormattingMultiProcessEngine(engine.MultiProcessEngine):
@@ -279,8 +296,11 @@ class OutputAndFormattingMultiProcessEngine(engine.MultiProcessEngine):
 
     mediator.SetTimeZone(processing_configuration.preferred_time_zone)
 
+<<<<<<< HEAD
     mediator.SetTextPrepend(processing_configuration.text_prepend)
 
+=======
+>>>>>>> origin/main
     self._ReadMessageFormatters(
         mediator, processing_configuration.data_location)
 
@@ -429,27 +449,46 @@ class OutputAndFormattingMultiProcessEngine(engine.MultiProcessEngine):
       deduplicate_events (Optional[bool]): True if events should be
           deduplicated.
     """
+    last_event_values_hash = None
     last_macb_group_identifier = None
-    last_content_identifier = None
+    last_timestamp_desc = None
     macb_group = []
 
-    generator = self._export_event_heap.PopEvents()
+    for (event_values_hash, event, event_data,
+         event_data_stream) in self._export_event_heap.PopEvents():
+      timestamp_desc = event.timestamp_desc
 
-    for (macb_group_identifier, content_identifier, event, event_data,
-         event_data_stream) in generator:
-      if deduplicate_events and last_content_identifier == content_identifier:
+      if (deduplicate_events and timestamp_desc == last_timestamp_desc and
+          event_values_hash == last_event_values_hash):
         self._events_status.number_of_duplicate_events += 1
         continue
 
       event_identifier = event.GetIdentifier()
       event_tag = storage_reader.GetEventTagByEventIdentifer(event_identifier)
 
+      if timestamp_desc in (
+          definitions.TIME_DESCRIPTION_LAST_ACCESS,
+          definitions.TIME_DESCRIPTION_CREATION,
+          definitions.TIME_DESCRIPTION_METADATA_MODIFICATION,
+          definitions.TIME_DESCRIPTION_MODIFICATION):
+        macb_group_identifier = event_values_hash
+      else:
+        macb_group_identifier = None
+
       if macb_group_identifier is None:
         if macb_group:
+<<<<<<< HEAD
           output_module.WriteEventMACBGroup(self._output_mediator, macb_group)
           macb_group = []
 
         output_module.WriteEvent(
+=======
+          output_module.WriteFieldValuesOfMACBGroup(
+              self._output_mediator, macb_group)
+          macb_group = []
+
+        output_module.WriteFieldValues(
+>>>>>>> origin/main
             self._output_mediator, event, event_data, event_data_stream,
             event_tag)
 
@@ -459,16 +498,27 @@ class OutputAndFormattingMultiProcessEngine(engine.MultiProcessEngine):
           macb_group.append((event, event_data, event_data_stream, event_tag))
 
         else:
+<<<<<<< HEAD
           output_module.WriteEventMACBGroup(self._output_mediator, macb_group)
+=======
+          output_module.WriteFieldValuesOfMACBGroup(
+              self._output_mediator, macb_group)
+>>>>>>> origin/main
           macb_group = [(event, event_data, event_data_stream, event_tag)]
 
         self._events_status.number_of_macb_grouped_events += 1
 
+      last_event_values_hash = event_values_hash
       last_macb_group_identifier = macb_group_identifier
-      last_content_identifier = content_identifier
+      last_timestamp_desc = timestamp_desc
 
     if macb_group:
+<<<<<<< HEAD
       output_module.WriteEventMACBGroup(self._output_mediator, macb_group)
+=======
+      output_module.WriteFieldValuesOfMACBGroup(
+          self._output_mediator, macb_group)
+>>>>>>> origin/main
 
   def _ReadMessageFormatters(self, output_mediator_object, data_location):
     """Reads the message formatters from a formatters file or directory.
@@ -513,7 +563,7 @@ class OutputAndFormattingMultiProcessEngine(engine.MultiProcessEngine):
 
     self._processing_status.UpdateForemanStatus(
         self._name, self._status, self._pid, used_memory, '',
-        0, 0, self._number_of_consumed_events, 0, 0, 0, 0, 0)
+        0, 0, 0, 0, self._number_of_consumed_events, 0, 0, 0, 0, 0)
 
     self._processing_status.UpdateEventsStatus(self._events_status)
 

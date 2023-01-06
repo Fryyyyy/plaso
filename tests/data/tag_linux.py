@@ -6,14 +6,14 @@ import unittest
 
 from plaso.containers import events
 from plaso.lib import definitions
-from plaso.parsers import bash_history
-from plaso.parsers import syslog
+from plaso.parsers import fish_history
 from plaso.parsers import utmp
-from plaso.parsers import zsh_extended_history
 from plaso.parsers.jsonl_plugins import docker_layer_config
-from plaso.parsers.syslog_plugins import cron
+from plaso.parsers.text_plugins import bash_history
 from plaso.parsers.text_plugins import dpkg
 from plaso.parsers.text_plugins import selinux
+from plaso.parsers.text_plugins import syslog
+from plaso.parsers.text_plugins import zsh_extended_history
 
 from tests.data import test_lib
 
@@ -41,6 +41,12 @@ class LinuxTaggingFileTest(test_lib.TaggingFileTestCase):
         docker_layer_config.DockerLayerConfigurationEventData,
         attribute_values_per_name, ['application_execution'])
 
+    # Test: data_type is 'fish:history:command'
+    attribute_values_per_name = {}
+    self._CheckTaggingRule(
+        fish_history.FishHistoryEventData, attribute_values_per_name,
+        ['application_execution'])
+
     # Test: data_type is 'selinux:line' AND (audit_type is 'EXECVE' OR
     #       audit_type is 'USER_CMD')
     attribute_values_per_name = {
@@ -58,7 +64,7 @@ class LinuxTaggingFileTest(test_lib.TaggingFileTestCase):
     # Test: data_type is 'syslog:cron:task_run'
     attribute_values_per_name = {}
     self._CheckTaggingRule(
-        cron.CronTaskRunEventData, attribute_values_per_name,
+        syslog.SyslogCronTaskRunEventData, attribute_values_per_name,
         ['application_execution'])
 
     # Test: reporter is 'sudo' AND body contains 'COMMAND='
@@ -453,7 +459,8 @@ class LinuxTaggingFileTest(test_lib.TaggingFileTestCase):
 
   def testRuleApplicationInstall(self):
     """Tests the application_install tagging rule."""
-    # Test: data_type is 'dpkg:line' AND body contains 'status installed'
+    # Test: data_type is 'linux:dpkg_log:entry' AND
+    #       body contains 'status installed'
     attribute_values_per_name = {
         'body': ['status installed']}
     self._CheckTaggingRule(

@@ -1,7 +1,8 @@
 # Tags Linux application execution events.
 application_execution
-  data_type is 'bash:history:command'
+  data_type is 'bash:history:entry'
   data_type is 'docker:layer:configuration'
+  data_type is 'fish:history:entry'
   data_type is 'selinux:line' AND (audit_type is 'EXECVE' OR audit_type is 'USER_CMD')
   data_type is 'shell:zsh:history'
   data_type is 'syslog:cron:task_run'
@@ -97,7 +98,7 @@ device_disconnection
 
 # Tags Linux application installation events.
 application_install
-  data_type is 'dpkg:line' AND body contains 'status installed'
+  data_type is 'linux:dpkg_log:entry' AND body contains 'status installed'
 
 # Tags Linux service start events.
 service_start

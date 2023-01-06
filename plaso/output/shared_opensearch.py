@@ -4,7 +4,11 @@
 import logging
 import os
 
+from acstore.containers import interface as containers_interface
+
+from dfdatetime import interface as dfdatetime_interface
 from dfdatetime import posix_time as dfdatetime_posix_time
+
 from dfvfs.serializer.json_serializer import JsonPathSpecSerializer
 
 try:
@@ -33,6 +37,7 @@ class SharedOpenSearchFieldFormattingHelper(
   _FIELD_FORMAT_CALLBACKS = {
       'datetime': '_FormatDateTime',
       'display_name': '_FormatDisplayName',
+      'inode': '_FormatInode',
       'message': '_FormatMessage',
       'source_long': '_FormatSource',
       'source_short': '_FormatSourceShort',
@@ -75,6 +80,25 @@ class SharedOpenSearchFieldFormattingHelper(
       list[str]: event tag labels.
     """
     return getattr(event_tag, 'labels', None) or []
+
+  def _FormatInode(self, output_mediator, event, event_data, event_data_stream):
+    """Formats an inode field.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      event (EventObject): event.
+      event_data (EventData): event data.
+      event_data_stream (EventDataStream): event data stream.
+
+    Returns:
+      str: inode field.
+    """
+    inode = getattr(event_data, 'inode', None)
+    if isinstance(inode, int):
+      inode = '{0:d}'.format(inode)
+
+    return inode
 
   def _FormatTimestamp(
       self, output_mediator, event, event_data, event_data_stream):
@@ -276,6 +300,7 @@ class SharedOpenSearchOutputModule(interface.OutputModule):
     self._event_documents = []
     self._number_of_buffered_events = 0
 
+<<<<<<< HEAD
   def _GetSanitizedEventValues(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
     """Sanitizes the event for use in OpenSearch.
@@ -367,6 +392,8 @@ class SharedOpenSearchOutputModule(interface.OutputModule):
     if self._number_of_buffered_events > self._flush_interval:
       self._FlushEvents()
 
+=======
+>>>>>>> origin/main
   def _SanitizeField(self, data_type, attribute_name, field):
     """Sanitizes a field for output.
 
@@ -396,6 +423,70 @@ class SharedOpenSearchOutputModule(interface.OutputModule):
     self._FlushEvents()
 
     self._client = None
+
+  def _GetFieldValues(
+      self, output_mediator, event, event_data, event_data_stream, event_tag):
+    """Retrieves the output field values.
+
+    Args:
+      output_mediator (OutputMediator): mediates interactions between output
+          modules and other components, such as storage and dfVFS.
+      event (EventObject): event.
+      event_data (EventData): event data.
+      event_data_stream (EventDataStream): event data stream.
+      event_tag (EventTag): event tag.
+
+    Returns:
+      dict[str, str]: output field values per name.
+    """
+    event_values = {}
+
+    if event_data:
+      for attribute_name, attribute_value in event_data.GetAttributes():
+        # Ignore attribute container identifier and date and time values.
+        if isinstance(attribute_value, (
+            containers_interface.AttributeContainerIdentifier,
+            dfdatetime_interface.DateTimeValues)):
+          continue
+
+        if (isinstance(attribute_value, list) and attribute_value and
+            isinstance(attribute_value[0],
+                       dfdatetime_interface.DateTimeValues)):
+          continue
+
+        event_values[attribute_name] = attribute_value
+
+    if event_data_stream:
+      for attribute_name, attribute_value in event_data_stream.GetAttributes():
+        event_values[attribute_name] = attribute_value
+
+    for attribute_name in self._field_names:
+      if attribute_name not in event_values:
+        event_values[attribute_name] = None
+
+    field_values = {}
+    for attribute_name, attribute_value in event_values.items():
+      if attribute_name == 'path_spec':
+        try:
+          field_value = JsonPathSpecSerializer.WriteSerialized(attribute_value)
+        except TypeError:
+          continue
+
+      else:
+        field_value = self._field_formatting_helper.GetFormattedField(
+            output_mediator, attribute_name, event, event_data,
+            event_data_stream, event_tag)
+
+      if field_value is None and attribute_name in self._custom_fields:
+        field_value = self._custom_fields.get(attribute_name, None)
+
+      if field_value is None:
+        field_value = '-'
+
+      field_values[attribute_name] = self._SanitizeField(
+          event_data.data_type, attribute_name, field_value)
+
+    return field_values
 
   def SetAdditionalFields(self, field_names):
     """Sets the names of additional fields to output.
@@ -509,6 +600,7 @@ class SharedOpenSearchOutputModule(interface.OutputModule):
     """
     self._url_prefix = url_prefix
     logger.debug('OpenSearch URL prefix: {0!s}')
+<<<<<<< HEAD
 
   def WriteEventBody(
       self, output_mediator, event, event_data, event_data_stream, event_tag):
@@ -524,3 +616,5 @@ class SharedOpenSearchOutputModule(interface.OutputModule):
     """
     self._InsertEvent(
         output_mediator, event, event_data, event_data_stream, event_tag)
+=======
+>>>>>>> origin/main

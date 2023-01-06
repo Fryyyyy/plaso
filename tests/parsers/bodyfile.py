@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers import bodyfile
 
 from tests.parsers import test_lib
@@ -18,8 +17,9 @@ class BodyfileTest(test_lib.ParserTestCase):
     parser = bodyfile.BodyfileParser()
     storage_writer = self._ParseFile(['bodyfile'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 71)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 24)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -29,14 +29,16 @@ class BodyfileTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetSortedEvents())
-
     # Test this entry:
     # 0|/a_directory/another_file|16|r/rrw-------|151107|5000|22|1337961583|
     # 1337961584|1337961585|0
 
     expected_event_values = {
+        'access_time': '2012-05-25T15:59:43',
+        'change_time': '2012-05-25T15:59:45',
+        'creation_time': None,
         'data_type': 'fs:bodyfile:entry',
+<<<<<<< HEAD
         'date_time': '2012-05-25T15:59:43',
         'filename': '/a_directory/another_file',
         'group_identifier': 5000,
@@ -116,6 +118,16 @@ class BodyfileTest(test_lib.ParserTestCase):
         'timestamp_desc': definitions.TIME_DESCRIPTION_MODIFICATION}
 
     self.CheckEventValues(storage_writer, events[68], expected_event_values)
+=======
+        'filename': '/a_directory/another_file',
+        'group_identifier': 5000,
+        'inode': 16,
+        'modification_time': '2012-05-25T15:59:44',
+        'owner_identifier': '151107'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   def testParseWithTimeZone(self):
     """Tests the Parse function with a time zone."""
@@ -156,8 +168,9 @@ class BodyfileTest(test_lib.ParserTestCase):
     parser = bodyfile.BodyfileParser()
     storage_writer = self._ParseFile(['bodyfile.corrupt'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 10)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 3)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -167,27 +180,39 @@ class BodyfileTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 1)
 
-    events = list(storage_writer.GetSortedEvents())
-
-    # Event extracted from line with unescaped \r character.
+    # Event data extracted from line with unescaped \r character.
     expected_event_values = {
+        'access_time': '2012-05-25T16:00:53',
+        'change_time': '2012-05-25T16:01:03',
+        'creation_time': None,
         'data_type': 'fs:bodyfile:entry',
+<<<<<<< HEAD
         'date_time': '2012-05-25T16:00:53',
+=======
+>>>>>>> origin/main
         'filename': '/passwords\r.txt',
         'inode': 15,
-        'timestamp_desc': definitions.TIME_DESCRIPTION_MODIFICATION}
+        'modification_time': '2012-05-25T16:00:53'}
 
-    self.CheckEventValues(storage_writer, events[3], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
 
-    # Event extracted from line with unescaped \\ character.
+    # Event data extracted from line with unescaped \\ character.
     expected_event_values = {
+        'access_time': '2021-01-12T12:26:01',
+        'change_time': '2019-03-19T04:37:22',
+        'creation_time': '2019-03-19T04:37:22',
         'data_type': 'fs:bodyfile:entry',
+<<<<<<< HEAD
         'date_time': '2019-03-19T04:37:22',
+=======
+>>>>>>> origin/main
         'filename': '/Windows\\System32',
         'inode': 75520,
-        'timestamp_desc': definitions.TIME_DESCRIPTION_CREATION}
+        'modification_time': '2021-01-12T12:26:01'}
 
-    self.CheckEventValues(storage_writer, events[6], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

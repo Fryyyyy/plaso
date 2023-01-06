@@ -85,10 +85,7 @@ import pyparsing
 from dfdatetime import posix_time as dfdatetime_posix_time
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.lib import errors
-from plaso.parsers import logger
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
@@ -98,37 +95,47 @@ class PopularityContestSessionEventData(events.EventData):
 
   Attributes:
     details (str): version and host architecture.
-    hostid (str): host uuid.
+    end_time (dfdatetime.DateTimeValues): date and time the end of the session
+        log entry was added.
+    host_identifier (str): host identifier (UUID).
     session (int): session number.
-    status (str): session status, either "start" or "end".
+    start_time (dfdatetime.DateTimeValues): date and time the start of
+        the session log entry was added.
   """
 
-  DATA_TYPE = 'popularity_contest:session:event'
+  DATA_TYPE = 'linux:popularity_contest_log:session'
 
   def __init__(self):
     """Initializes event data."""
     super(PopularityContestSessionEventData, self).__init__(
         data_type=self.DATA_TYPE)
     self.details = None
-    self.hostid = None
+    self.end_time = None
+    self.host_identifier = None
     self.session = None
-    self.status = None
+    self.start_time = None
 
 
 class PopularityContestEventData(events.EventData):
   """Popularity Contest event data.
 
   Attributes:
+    access_time (dfdatetime.DateTimeValues): file entry last access date
+        and time.
+    change_time (dfdatetime.DateTimeValues): file entry inode change
+        (or metadata last modification) date and time.
     mru (str): recently used app/library from package.
     package (str): installed packaged name, which the mru belongs to.
     record_tag (str): popularity context tag.
   """
 
-  DATA_TYPE = 'popularity_contest:log:event'
+  DATA_TYPE = 'linux:popularity_contest_log:entry'
 
   def __init__(self):
     """Initializes event data."""
     super(PopularityContestEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.access_time = None
+    self.change_time = None
     self.mru = None
     self.package = None
     self.record_tag = None
@@ -142,41 +149,67 @@ class PopularityContestTextPlugin(interface.TextPlugin):
 
   ENCODING = 'utf-8'
 
-  _ASCII_PRINTABLES = pyparsing.printables
+  _INTEGER = pyparsing.Word(pyparsing.nums).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
   _UNICODE_PRINTABLES = ''.join(
       chr(character) for character in range(65536)
       if not chr(character).isspace())
 
   _MRU = pyparsing.Word(_UNICODE_PRINTABLES).setResultsName('mru')
-  _PACKAGE = pyparsing.Word(_ASCII_PRINTABLES).setResultsName('package')
   _TAG = pyparsing.QuotedString('<', endQuoteChar='>').setResultsName('tag')
 
-  _HEADER = (
-      pyparsing.Literal('POPULARITY-CONTEST-').suppress() +
-      text_parser.PyparsingConstants.INTEGER.setResultsName('session') +
-      pyparsing.Literal('TIME:').suppress() +
-      text_parser.PyparsingConstants.INTEGER.setResultsName('timestamp') +
-      pyparsing.Literal('ID:').suppress() +
-      pyparsing.Word(pyparsing.alphanums, exact=32).setResultsName('id') +
-      pyparsing.SkipTo(pyparsing.LineEnd()).setResultsName('details'))
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
-  _FOOTER = (
-      pyparsing.Literal('END-POPULARITY-CONTEST-').suppress() +
-      text_parser.PyparsingConstants.INTEGER.setResultsName('session') +
-      pyparsing.Literal('TIME:').suppress() +
-      text_parser.PyparsingConstants.INTEGER.setResultsName('timestamp'))
+  _HEADER_LINE = (
+      pyparsing.Suppress('POPULARITY-CONTEST-') +
+      _INTEGER.setResultsName('session') +
+      pyparsing.Suppress('TIME:') + _INTEGER.setResultsName('timestamp') +
+      pyparsing.Suppress('ID:') +
+      pyparsing.Word(pyparsing.alphanums, exact=32).setResultsName('id') +
+      pyparsing.restOfLine().setResultsName('details') +
+      _END_OF_LINE)
+
+  _FOOTER_LINE = (
+      pyparsing.Suppress('END-POPULARITY-CONTEST-') +
+      _INTEGER.setResultsName('session') +
+      pyparsing.Suppress('TIME:') + _INTEGER.setResultsName('timestamp') +
+      _END_OF_LINE)
 
   _LOG_LINE = (
-      text_parser.PyparsingConstants.INTEGER.setResultsName('atime') +
-      text_parser.PyparsingConstants.INTEGER.setResultsName('ctime') +
-      (_PACKAGE + _TAG | _PACKAGE + _MRU + pyparsing.Optional(_TAG)))
+      _INTEGER.setResultsName('atime') +
+      _INTEGER.setResultsName('ctime') +
+      pyparsing.Word(pyparsing.printables).setResultsName('package') +
+      (_TAG ^ (_MRU + _TAG) ^ _MRU) +
+      _END_OF_LINE)
 
   _LINE_STRUCTURES = [
-      ('logline', _LOG_LINE),
-      ('header', _HEADER),
-      ('footer', _FOOTER)]
+      ('footer_line', _FOOTER_LINE),
+      ('header_line', _HEADER_LINE),
+      ('log_line', _LOG_LINE)]
 
-  _SUPPORTED_KEYS = frozenset([key for key, _ in _LINE_STRUCTURES])
+  VERIFICATION_GRAMMAR = _HEADER_LINE
+
+  def __init__(self):
+    """Initializes a text parser plugin."""
+    super(PopularityContestTextPlugin, self).__init__()
+    self._session_event_data = None
+
+  def _GetDateTimeValueFromStructure(self, structure, name):
+    """Retrieves a date and time value from a Pyparsing structure.
+
+    Args:
+      structure (pyparsing.ParseResults): tokens from a parsed log line.
+      name (str): name of the token.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value or None if not available.
+    """
+    timestamp = self._GetValueFromStructure(structure, name)
+    if not timestamp:
+      return None
+
+    return dfdatetime_posix_time.PosixTime(timestamp=timestamp)
 
   def _ParseLogLine(self, parser_mediator, structure):
     """Extracts events from a log line.
@@ -186,41 +219,34 @@ class PopularityContestTextPlugin(interface.TextPlugin):
           and other components, such as storage and dfVFS.
       structure (pyparsing.ParseResults): structure parsed from the log file.
     """
-    # Required fields are <mru> and <atime> and we are not interested in
-    # log lines without <mru>.
-    mru = self._GetValueFromStructure(structure, 'mru')
-    if not mru:
-      return
-
-    event_data = PopularityContestEventData()
-    event_data.mru = mru
-    event_data.package = self._GetValueFromStructure(structure, 'package')
-    event_data.record_tag = self._GetValueFromStructure(structure, 'tag')
-
     # The <atime> field (as <ctime>) is always present but could be 0.
     # In case of <atime> equal to 0, we are in <NOFILES> case, safely return
     # without logging.
-    access_time = self._GetValueFromStructure(structure, 'atime')
-    if access_time:
-      # TODO: not doing any check on <tag> fields, even if only informative
-      # probably it could be better to check for the expected values.
-      date_time = dfdatetime_posix_time.PosixTime(timestamp=access_time)
-      event = time_events.DateTimeValuesEvent(
-          date_time, definitions.TIME_DESCRIPTION_LAST_ACCESS)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
 
-    change_time = self._GetValueFromStructure(structure, 'ctime')
-    if change_time:
-      date_time = dfdatetime_posix_time.PosixTime(timestamp=change_time)
-      event = time_events.DateTimeValuesEvent(
-          date_time, definitions.TIME_DESCRIPTION_METADATA_MODIFICATION)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
+    # TODO: not doing any check on <tag> fields, even if only informative
+    # probably it could be better to check for the expected values.
+
+    # Required fields are <mru> and <atime> and we are not interested in
+    # log lines without <mru>.
+    if 'mru' not in structure:
+      return
+
+    event_data = PopularityContestEventData()
+
+    event_data.access_time = self._GetDateTimeValueFromStructure(
+        structure, 'atime')
+
+    event_data.change_time = self._GetDateTimeValueFromStructure(
+        structure, 'ctime')
+
+    event_data.mru = self._GetValueFromStructure(structure, 'mru')
+    event_data.package = self._GetValueFromStructure(structure, 'package')
+    event_data.record_tag = self._GetValueFromStructure(structure, 'tag')
+
+    parser_mediator.ProduceEventData(event_data)
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -229,65 +255,55 @@ class PopularityContestTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key not in self._SUPPORTED_KEYS:
-      raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
-
-    # TODO: Add anomaly objects for abnormal timestamps, such as when the log
-    # timestamp is greater than the session start.
-    if key == 'logline':
+    if key == 'log_line':
       self._ParseLogLine(parser_mediator, structure)
 
-    else:
-      timestamp = self._GetValueFromStructure(structure, 'timestamp')
-      if timestamp is None:
-        logger.debug('[{0:s}] {1:s} with invalid timestamp.'.format(
-            self.NAME, key))
-        return
+    elif key in ('footer_line', 'header_line'):
+      date_time = self._GetDateTimeValueFromStructure(
+          structure, 'timestamp')
 
       session = self._GetValueFromStructure(structure, 'session')
 
-      event_data = PopularityContestSessionEventData()
-      # TODO: determine why session is formatted as a string.
-      event_data.session = '{0!s}'.format(session)
+      if key == 'header_line':
+        self._session_event_data = PopularityContestSessionEventData()
+        self._session_event_data.session = session
+        self._session_event_data.start_time = date_time
 
-      if key == 'header':
-        event_data.details = self._GetValueFromStructure(structure, 'details')
-        event_data.hostid = self._GetValueFromStructure(structure, 'id')
-        event_data.status = 'start'
+        self._session_event_data.details = self._GetStringValueFromStructure(
+            structure, 'details')
+        self._session_event_data.host_identifier = self._GetValueFromStructure(
+            structure, 'id')
 
-      elif key == 'footer':
-        event_data.status = 'end'
+      elif key == 'footer_line':
+        # TODO: check session
 
-      date_time = dfdatetime_posix_time.PosixTime(timestamp=timestamp)
-      event = time_events.DateTimeValuesEvent(
-          date_time, definitions.TIME_DESCRIPTION_ADDED)
-      parser_mediator.ProduceEventWithEventData(event, event_data)
+        self._session_event_data.end_time = date_time
 
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+        parser_mediator.ProduceEventData(self._session_event_data)
+
+        self._session_event_data = None
+
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
-    try:
-      parsed_structure = self._HEADER.parseString(line)
-    except pyparsing.ParseException:
-      parsed_structure = None
+    self._session_event_data = None
 
-    return bool(parsed_structure)
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(PopularityContestTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(PopularityContestTextPlugin)

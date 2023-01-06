@@ -19,9 +19,8 @@ import pyparsing
 from dfdatetime import posix_time as dfdatetime_posix_time
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import errors
 from plaso.lib import definitions
+from plaso.lib import errors
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
@@ -32,6 +31,8 @@ class SELinuxLogEventData(events.EventData):
   Attributes:
     audit_type (str): audit type.
     body (str): body of the log line.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
     pid (int): process identifier (PID) that created the SELinux log line.
   """
 
@@ -42,6 +43,7 @@ class SELinuxLogEventData(events.EventData):
     super(SELinuxLogEventData, self).__init__(data_type=self.DATA_TYPE)
     self.audit_type = None
     self.body = None
+    self.last_written_time = None
     self.pid = None
 
 
@@ -51,54 +53,40 @@ class SELinuxTextPlugin(interface.TextPlugin):
   NAME = 'selinux'
   DATA_FORMAT = 'SELinux audit log (audit.log) file'
 
-  _SELINUX_KEY_VALUE_GROUP = pyparsing.Group(
-      pyparsing.Word(pyparsing.alphanums).setResultsName('key') +
+  _INTEGER = pyparsing.Word(pyparsing.nums).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
+  _KEY_VALUE_GROUP = pyparsing.Group(
+      pyparsing.Word(pyparsing.alphanums) +
       pyparsing.Suppress('=') + (
           pyparsing.QuotedString('"') ^
-          pyparsing.Word(pyparsing.printables)).setResultsName('value'))
+          pyparsing.Word(pyparsing.printables)))
 
-  _SELINUX_KEY_VALUE_DICT = pyparsing.Dict(
-      pyparsing.ZeroOrMore(_SELINUX_KEY_VALUE_GROUP))
+  _KEY_VALUE_DICT = pyparsing.Dict(
+      pyparsing.ZeroOrMore(_KEY_VALUE_GROUP))
 
-  _SELINUX_BODY_GROUP = pyparsing.Group(
-      pyparsing.Empty().setResultsName('key') +
-      pyparsing.restOfLine.setResultsName('value'))
+  _TIMESTAMP = pyparsing.Group(
+      _INTEGER + pyparsing.Suppress('.') + _INTEGER)
 
-  _SELINUX_MSG_GROUP = pyparsing.Group(
-      pyparsing.Literal('msg').setResultsName('key') +
-      pyparsing.Suppress('=audit(') +
-      pyparsing.Word(pyparsing.nums).setResultsName('seconds') +
-      pyparsing.Suppress('.') +
-      pyparsing.Word(pyparsing.nums).setResultsName('milliseconds') +
-      pyparsing.Suppress(':') +
-      pyparsing.Word(pyparsing.nums).setResultsName('serial') +
-      pyparsing.Suppress('):'))
-
-  _SELINUX_TYPE_GROUP = pyparsing.Group(
-      pyparsing.Literal('type').setResultsName('key') +
-      pyparsing.Suppress('=') + (
-          pyparsing.Word(pyparsing.srange('[A-Z_]')) ^
-          pyparsing.Regex(r'UNKNOWN\[[0-9]+\]')).setResultsName('value'))
-
-  _SELINUX_TYPE_AVC_GROUP = pyparsing.Group(
-      pyparsing.Literal('type').setResultsName('key') +
-      pyparsing.Suppress('=') + (
-          pyparsing.Word('AVC') ^
-          pyparsing.Word('USER_AVC')).setResultsName('value'))
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
   # A log line is formatted as: type=TYPE msg=audit([0-9]+\.[0-9]+:[0-9]+): .*
-  _SELINUX_LOG_LINE = pyparsing.Dict(
-      _SELINUX_TYPE_GROUP +
-      _SELINUX_MSG_GROUP +
-      _SELINUX_BODY_GROUP)
+  _LOG_LINE = (
+      pyparsing.Suppress('type=') + (
+          pyparsing.Word(pyparsing.srange('[A-Z_]')) ^
+          pyparsing.Regex(r'UNKNOWN\[[0-9]+\]')).setResultsName('type') +
+      pyparsing.Suppress('msg=audit(') +
+      _TIMESTAMP.setResultsName('timestamp') +
+      pyparsing.Suppress(':') + _INTEGER + pyparsing.Suppress('):') +
+      pyparsing.restOfLine().setResultsName('body') +
+      _END_OF_LINE)
 
-  _LINE_STRUCTURES = [('line', _SELINUX_LOG_LINE)]
+  _LINE_STRUCTURES = [('log_line', _LOG_LINE)]
+
+  VERIFICATION_GRAMMAR = _LOG_LINE
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -107,77 +95,81 @@ class SELinuxTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key != 'line':
-      raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
+    if key == 'log_line':
+      time_elements_structure = self._GetValueFromStructure(
+          structure, 'timestamp')
 
-    msg_value = self._GetValueFromStructure(structure, 'msg')
-    if not msg_value:
-      parser_mediator.ProduceExtractionWarning(
-          'missing msg value: {0!s}'.format(structure))
-      return
-
-    try:
-      seconds = int(msg_value[0], 10)
-    except ValueError:
-      parser_mediator.ProduceExtractionWarning(
-          'unsupported number of seconds in msg value: {0!s}'.format(
-              structure))
-      return
-
-    try:
-      milliseconds = int(msg_value[1], 10)
-    except ValueError:
-      parser_mediator.ProduceExtractionWarning(
-          'unsupported number of milliseconds in msg value: {0!s}'.format(
-              structure))
-      return
-
-    timestamp = ((seconds * 1000) + milliseconds) * 1000
-    body_text = structure[2][0]
-
-    try:
       # Try to parse the body text as key value pairs. Note that not
       # all log lines will be properly formatted key value pairs.
-      body_structure = self._SELINUX_KEY_VALUE_DICT.parseString(body_text)
-    except pyparsing.ParseException:
-      body_structure = pyparsing.ParseResults()
+      body = self._GetValueFromStructure(structure, 'body', default_value='')
+      body = body.strip()
 
-    event_data = SELinuxLogEventData()
-    event_data.audit_type = self._GetValueFromStructure(structure, 'type')
-    event_data.body = body_text
-    event_data.pid = self._GetValueFromStructure(body_structure, 'pid')
+      try:
+        body_structure = self._KEY_VALUE_DICT.parseString(body)
 
-    date_time = dfdatetime_posix_time.PosixTimeInMicroseconds(
-        timestamp=timestamp)
-    event = time_events.DateTimeValuesEvent(
-        date_time, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+        process_identifier = self._GetValueFromStructure(
+            body_structure, 'pid')
+      except pyparsing.ParseException:
+        process_identifier = None
 
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+      event_data = SELinuxLogEventData()
+      event_data.audit_type = self._GetValueFromStructure(structure, 'type')
+      event_data.body = body or None
+      event_data.last_written_time = self._ParseTimeElements(
+          time_elements_structure)
+      event_data.pid = process_identifier
+
+      parser_mediator.ProduceEventData(event_data)
+
+  def _ParseTimeElements(self, time_elements_structure):
+    """Parses date and time elements of a log line.
+    Args:
+      time_elements_structure (pyparsing.ParseResults): date and time elements
+          of a log line.
+    Returns:
+      dfdatetime.PosixTimeInMilliseconds: date and time value.
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
+    try:
+      seconds, milliseconds = time_elements_structure
+
+      timestamp = (seconds * definitions.MILLISECONDS_PER_SECOND) + milliseconds
+
+      return dfdatetime_posix_time.PosixTimeInMilliseconds(timestamp=timestamp)
+
+    except (TypeError, ValueError) as exception:
+      raise errors.ParseError(
+          'Unable to parse time elements with error: {0!s}'.format(exception))
+
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      structure = self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'timestamp')
+
     try:
-      parsed_structure = self._SELINUX_LOG_LINE.parseString(line)
-    except pyparsing.ParseException:
-      parsed_structure = {}
+      self._ParseTimeElements(time_elements_structure)
+    except errors.ParseError:
+      return False
 
-    return 'type' in parsed_structure and 'msg' in parsed_structure
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(SELinuxTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(SELinuxTextPlugin)

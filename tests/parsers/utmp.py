@@ -17,8 +17,9 @@ class UtmpParserTest(test_lib.ParserTestCase):
     parser = utmp.UtmpParser()
     storage_writer = self._ParseFile(['utmp'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 14)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 14)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,10 +29,9 @@ class UtmpParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'linux:utmp:event',
+<<<<<<< HEAD
         'date_time': '2013-12-13T14:45:09.688666+00:00',
         'terminal': 'system boot',
         'type': 2}
@@ -48,6 +48,8 @@ class UtmpParserTest(test_lib.ParserTestCase):
     expected_event_values = {
         'data_type': 'linux:utmp:event',
         'date_time': '2013-12-13T14:45:09.000000+00:00',
+=======
+>>>>>>> origin/main
         'exit_status': 0,
         'hostname': 'localhost',
         'ip_address': '0.0.0.0',
@@ -55,8 +57,10 @@ class UtmpParserTest(test_lib.ParserTestCase):
         'terminal_identifier': 52,
         'terminal': 'tty4',
         'type': 6,
-        'username': 'LOGIN'}
+        'username': 'LOGIN',
+        'written_time': '2013-12-13T14:45:09.000000+00:00'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[2], expected_event_values)
 
     expected_event_values = {
@@ -72,14 +76,19 @@ class UtmpParserTest(test_lib.ParserTestCase):
         'username': 'moxilo'}
 
     self.CheckEventValues(storage_writer, events[12], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 2)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
   def testParseWtmpFile(self):
     """Tests the Parse function on a wtmp file."""
     parser = utmp.UtmpParser()
     storage_writer = self._ParseFile(['wtmp.1'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -88,8 +97,6 @@ class UtmpParserTest(test_lib.ParserTestCase):
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
-
-    events = list(storage_writer.GetEvents())
 
     expected_event_values = {
         'data_type': 'linux:utmp:event',
@@ -101,9 +108,11 @@ class UtmpParserTest(test_lib.ParserTestCase):
         'terminal': 'pts/32',
         'terminal_identifier': 842084211,
         'type': 7,
-        'username': 'userA'}
+        'username': 'userA',
+        'written_time': '2011-12-01T17:36:38.432935+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

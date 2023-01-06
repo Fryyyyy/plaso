@@ -55,7 +55,6 @@ class OutputMediator(object):
     self._preferred_encoding = preferred_encoding
     self._source_mappings = {}
     self._storage_reader = None
-    self._text_prepend = None
     self._time_zone = None
 
     self.data_location = data_location
@@ -101,6 +100,8 @@ class OutputMediator(object):
           message_formatter.AddHelper(custom_formatter_helper)
 
       self._message_formatters[message_formatter.data_type] = message_formatter
+      self._source_mappings[message_formatter.data_type] = (
+          message_formatter.source_mapping)
 
   def _ReadSourceMappings(self):
     """Reads the source mappings from the sources.config data file.
@@ -137,8 +138,7 @@ class OutputMediator(object):
     Returns:
       str: human readable version of the path specification.
     """
-    return path_helper.PathHelper.GetDisplayNameForPathSpec(
-        path_spec, text_prepend=self._text_prepend)
+    return path_helper.PathHelper.GetDisplayNameForPathSpec(path_spec)
 
   def GetHostname(self, event_data, default_hostname='-'):
     """Retrieves the hostname related to the event.
@@ -315,9 +315,12 @@ class OutputMediator(object):
       tuple[str, str]: short and (long) source mappings or (None, None) if not
           available.
     """
+<<<<<<< HEAD
     if not self._source_mappings:
       self._ReadSourceMappings()
 
+=======
+>>>>>>> origin/main
     data_type = data_type.lower()
     return self._source_mappings.get(data_type, (None, None))
 
@@ -415,15 +418,6 @@ class OutputMediator(object):
       storage_reader (StorageReader): storage reader.
     """
     self._storage_reader = storage_reader
-
-  def SetTextPrepend(self, text_prepend):
-    """Sets the text to prepend to the display name.
-
-    Args:
-      text_prepend (str): text to prepend to the display name or None if no
-          text should be prepended.
-    """
-    self._text_prepend = text_prepend
 
   def SetTimeZone(self, time_zone):
     """Sets the time zone.

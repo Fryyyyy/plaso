@@ -65,8 +65,9 @@ class WinRARHistoryPluginTest(test_lib.RegistryPluginTestCase):
     plugin = winrar.WinRARHistoryPlugin()
     storage_writer = self._ParseKeyWithPlugin(registry_key, plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -76,22 +77,21 @@ class WinRARHistoryPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
-    expected_entries = (
-        '0: C:\\Downloads\\The Sleeping Dragon CD1.iso '
-        '1: C:\\Downloads\\plaso-static.rar')
-
     expected_event_values = {
         'data_type': 'winrar:history',
+<<<<<<< HEAD
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
         'entries': expected_entries,
+=======
+        'entries': (
+            '0: C:\\Downloads\\The Sleeping Dragon CD1.iso '
+            '1: C:\\Downloads\\plaso-static.rar'),
+>>>>>>> origin/main
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

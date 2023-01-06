@@ -72,8 +72,9 @@ class ServersTerminalServerClientPluginTest(test_lib.RegistryPluginTestCase):
     plugin = terminal_server.TerminalServerClientPlugin()
     storage_writer = self._ParseKeyWithPlugin(registry_key, plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 2)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 2)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -83,26 +84,25 @@ class ServersTerminalServerClientPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'windows:registry:mstsc:connection',
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
         'key_path': '{0:s}\\myserver.com'.format(key_path),
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME,
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00',
         'username': 'DOMAIN\\username'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
     expected_event_values = {
         'data_type': 'windows:registry:key_value',
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
         'key_path': key_path,
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00',
         'values': None}
 
-    self.CheckEventValues(storage_writer, events[1], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 class DefaultTerminalServerClientMRUPluginTest(test_lib.RegistryPluginTestCase):
@@ -148,8 +148,9 @@ class DefaultTerminalServerClientMRUPluginTest(test_lib.RegistryPluginTestCase):
     plugin = terminal_server.TerminalServerClientMRUPlugin()
     storage_writer = self._ParseKeyWithPlugin(registry_key, plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -159,22 +160,21 @@ class DefaultTerminalServerClientMRUPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
-    expected_entries = (
-        'MRU0: 192.168.16.60 '
-        'MRU1: computer.domain.com')
-
     expected_event_values = {
         'data_type': 'windows:registry:mstsc:mru',
+<<<<<<< HEAD
         'date_time': '2012-08-28T09:23:49.0020310+00:00',
         'entries': expected_entries,
+=======
+        'entries': (
+            'MRU0: 192.168.16.60 '
+            'MRU1: computer.domain.com'),
+>>>>>>> origin/main
         'key_path': key_path,
-        # This should just be the plugin name, as we're invoking it directly,
-        # and not through the parser.
-        'parser': plugin.NAME}
+        'last_written_time': '2012-08-28T09:23:49.0020310+00:00'}
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
 
 if __name__ == '__main__':

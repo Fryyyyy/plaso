@@ -17,8 +17,9 @@ class OperaTypedParserTest(test_lib.ParserTestCase):
     parser = opera.OperaTypedHistoryParser()
     storage_writer = self._ParseFile(['typed_history.xml'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 4)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -28,14 +29,17 @@ class OperaTypedParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'opera:history:typed_entry',
+<<<<<<< HEAD
         'date_time': '2013-11-11T23:45:27+00:00',
+=======
+>>>>>>> origin/main
         'entry_selection': 'Filled from autocomplete.',
+        'last_typed_time': '2013-11-11T23:45:27+00:00',
         'url': 'plaso.kiddaland.net'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
 
     expected_event_values = {
@@ -45,6 +49,10 @@ class OperaTypedParserTest(test_lib.ParserTestCase):
         'url': 'theonion.com'}
 
     self.CheckEventValues(storage_writer, events[3], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 class OperaGlobalParserTest(test_lib.ParserTestCase):
@@ -55,8 +63,9 @@ class OperaGlobalParserTest(test_lib.ParserTestCase):
     parser = opera.OperaGlobalHistoryParser()
     storage_writer = self._ParseFile(['global_history.dat'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 37)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 37)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -66,17 +75,20 @@ class OperaGlobalParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'data_type': 'opera:history:entry',
+<<<<<<< HEAD
         'date_time': '2013-11-11T22:45:46+00:00',
+=======
+>>>>>>> origin/main
         'description': 'First and Only Visit',
+        'last_visited_time': '2013-11-11T22:45:46+00:00',
         'title': 'Karl Bretaprins fær ellilífeyri - mbl.is',
         'url': (
             'http://www.mbl.is/frettir/erlent/2013/11/11/'
             'karl_bretaprins_faer_ellilifeyri/')}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[4], expected_event_values)
 
     expected_event_values = {
@@ -93,6 +105,10 @@ class OperaGlobalParserTest(test_lib.ParserTestCase):
             'By Andie MacDowell | The Onion - America\'s Finest News Source')}
 
     self.CheckEventValues(storage_writer, events[16], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 4)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

@@ -11,7 +11,6 @@ import pyfsntfs
 from plaso.containers import event_registry
 from plaso.containers import events
 from plaso.containers import windows_events
-from plaso.lib import definitions
 from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 from plaso.lib import specification

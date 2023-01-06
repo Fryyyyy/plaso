@@ -1,14 +1,15 @@
 pip >= 7.0.0
 PyYAML >= 3.10
 XlsxWriter >= 0.9.3
+acstore >= 20230101
 artifacts >= 20220219
 bencode.py
 certifi >= 2016.9.26
 cffi >= 1.9.1
 cryptography >= 2.0.2
 defusedxml >= 0.5.0
-dfdatetime >= 20220925
-dfvfs >= 20220917
+dfdatetime >= 20221112
+dfvfs >= 20221224
 dfwinreg >= 20211207
 dtfabric >= 20220219
 future >= 0.16.0
@@ -54,7 +55,7 @@ pytsk3 >= 20210419
 pytz
 pyxattr >= 0.7.2
 pyzmq >= 2.1.11
-redis >= 3.4,< 4.2
+redis >= 3.4
 requests >= 2.18.0
 six >= 1.1.0
 yara-python >= 3.4.0

@@ -6,9 +6,7 @@ import pyparsing
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
 from plaso.lib import errors
-from plaso.lib import definitions
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
@@ -19,6 +17,8 @@ class IOSSysdiagnoseLogdData(events.EventData):
   Attributes:
     body (str): body of the event line.
     logger (str): name of the process that generated the event.
+    written_time (dfdatetime.DateTimeValues): date and time the log entry was
+        written.
   """
 
   DATA_TYPE = 'ios:sysdiagnose:logd:line'
@@ -28,6 +28,7 @@ class IOSSysdiagnoseLogdData(events.EventData):
     super(IOSSysdiagnoseLogdData, self).__init__(data_type=self.DATA_TYPE)
     self.body = None
     self.logger = None
+    self.written_time = None
 
 
 class IOSSysdiagnoseLogdTextPlugin(interface.TextPlugin):
@@ -36,27 +37,40 @@ class IOSSysdiagnoseLogdTextPlugin(interface.TextPlugin):
   NAME = 'ios_logd'
   DATA_FORMAT = 'iOS sysdiagnose logd file'
 
-  _TIMESTAMP = (
-      text_parser.PyparsingConstants.DATE_ELEMENTS +
-      text_parser.PyparsingConstants.TIME_ELEMENTS)
+  _TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _TIME_DELTA = pyparsing.Word(
-      pyparsing.nums + '+' + '-', exact=5).setResultsName('time_delta')
+  _FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _LOGGER = (pyparsing.SkipTo(':').setResultsName('logger') +
-             pyparsing.Suppress(': '))
+  _TIME_ZONE_OFFSET = (
+      pyparsing.Word('+-', exact=1) + _TWO_DIGITS + _TWO_DIGITS)
 
-  _BODY = pyparsing.SkipTo(pyparsing.LineEnd()).setResultsName('body')
+  # Date and time values are formatted as: 2021-08-11 05:50:23-0700
+  _DATE_TIME = (
+      _FOUR_DIGITS + pyparsing.Suppress('-') +
+      _TWO_DIGITS + pyparsing.Suppress('-') + _TWO_DIGITS +
+      _TWO_DIGITS + pyparsing.Suppress(':') +
+      _TWO_DIGITS + pyparsing.Suppress(':') + _TWO_DIGITS +
+      _TIME_ZONE_OFFSET)
 
-  _LINE_GRAMMAR = _TIMESTAMP + _TIME_DELTA + _LOGGER + _BODY
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
-  _LINE_STRUCTURES = [('log_entry', _LINE_GRAMMAR)]
+  _LOGGER = pyparsing.Combine(
+      pyparsing.Word(pyparsing.alphas + '_') + pyparsing.Literal('[') +
+      pyparsing.Word(pyparsing.nums) + pyparsing.Literal(']'))
+
+  _LOG_LINE = (
+      _DATE_TIME.setResultsName('date_time') +
+      _LOGGER.setResultsName('logger') + pyparsing.Suppress(': ') +
+      pyparsing.restOfLine().setResultsName('body') + _END_OF_LINE)
+
+  _LINE_STRUCTURES = [('log_entry', _LOG_LINE)]
+
+  VERIFICATION_GRAMMAR = _LOG_LINE
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -65,72 +79,77 @@ class IOSSysdiagnoseLogdTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key != 'log_entry':
-      raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
-
-    year = self._GetValueFromStructure(structure, 'year')
-    month = self._GetValueFromStructure(structure, 'month')
-    day = self._GetValueFromStructure(structure, 'day_of_month')
-    hours = self._GetValueFromStructure(structure, 'hours')
-    minutes = self._GetValueFromStructure(structure, 'minutes')
-    seconds = self._GetValueFromStructure(structure, 'seconds')
-
-    time_delta = self._GetValueFromStructure(structure, 'time_delta')
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
 
     event_data = IOSSysdiagnoseLogdData()
-    event_data.body = self._GetValueFromStructure(structure, 'body')
-    event_data.logger = self._GetValueFromStructure(structure, 'logger')
+    event_data.body = self._GetValueFromStructure(
+        structure, 'body', default_value='')
+    event_data.logger = self._GetValueFromStructure(
+        structure, 'logger', default_value='')
+    event_data.written_time = self._ParseTimeElements(time_elements_structure)
 
-    # dfDateTime takes the time zone offset as number of minutes relative from
-    # UTC. So for Easter Standard Time (EST), which is UTC-5:00 the sign needs
-    # to be converted, to +300 minutes.
+    parser_mediator.ProduceEventData(event_data)
+
+  def _ParseTimeElements(self, time_elements_structure):
+    """Parses date and time elements of a log line.
+
+    Args:
+      time_elements_structure (pyparsing.ParseResults): date and time elements
+          of a log line.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value.
+
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
     try:
-      time_delta_hours = int(time_delta[:3], 10)
-      time_delta_minutes = int(time_delta[3:], 10)
-    except (TypeError, ValueError):
-      parser_mediator.ProduceExtractionWarning('unsupported time delta value')
-      return
+      (year, month, day_of_month, hours, minutes, seconds, time_zone_sign,
+       time_zone_hours, time_zone_minutes) = time_elements_structure
 
-    time_zone_offset = (time_delta_hours * -60) + time_delta_minutes
+      time_zone_offset = (time_zone_hours * 60) + time_zone_minutes
+      if time_zone_sign == '-':
+        time_zone_offset *= -1
 
-    try:
-      date_time = dfdatetime_time_elements.TimeElements(
-          time_elements_tuple=(year, month, day, hours, minutes, seconds),
+      time_elements_tuple = (year, month, day_of_month, hours, minutes, seconds)
+
+      return dfdatetime_time_elements.TimeElements(
+          time_elements_tuple=time_elements_tuple,
           time_zone_offset=time_zone_offset)
-    except (TypeError, ValueError):
-      parser_mediator.ProduceExtractionWarning('unsupported date time value')
-      return
 
-    event = time_events.DateTimeValuesEvent(
-        date_time, definitions.TIME_DESCRIPTION_MODIFICATION)
+    except (TypeError, ValueError) as exception:
+      raise errors.ParseError(
+          'Unable to parse time elements with error: {0!s}'.format(exception))
 
-    parser_mediator.ProduceEventWithEventData(event, event_data)
-
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      structure = self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
+
     try:
-      parsed_structure = self._LINE_GRAMMAR.parseString(line)
-    except pyparsing.ParseException:
-      parsed_structure = None
+      self._ParseTimeElements(time_elements_structure)
+    except errors.ParseError:
+      return False
 
-    return bool(parsed_structure)
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(IOSSysdiagnoseLogdTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(IOSSysdiagnoseLogdTextPlugin)

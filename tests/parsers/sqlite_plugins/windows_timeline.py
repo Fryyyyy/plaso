@@ -4,7 +4,6 @@
 
 import unittest
 
-from plaso.lib import definitions
 from plaso.parsers.sqlite_plugins import windows_timeline
 
 from tests.parsers.sqlite_plugins import test_lib
@@ -19,8 +18,9 @@ class WindowsTimelineTest(test_lib.SQLitePluginTestCase):
     storage_writer = self._ParseDatabaseFileWithPlugin(
         ['windows_timeline_ActivitiesCache.db'], plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 112)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 112)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -30,16 +30,18 @@ class WindowsTimelineTest(test_lib.SQLitePluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
-
     expected_event_values = {
         'active_duration_seconds': 9,
         'data_type': 'windows:timeline:user_engaged',
+<<<<<<< HEAD
         'date_time': '2018-08-03T11:29:00+00:00',
+=======
+>>>>>>> origin/main
         'package_identifier': 'c:\\python34\\python.exe',
         'reporting_app': 'ShellActivityMonitor',
-        'timestamp_desc': definitions.TIME_DESCRIPTION_START}
+        'start_time': '2018-08-03T11:29:00+00:00'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
 
     expected_event_values = {
@@ -53,15 +55,24 @@ class WindowsTimelineTest(test_lib.SQLitePluginTestCase):
         'timestamp_desc': definitions.TIME_DESCRIPTION_START}
 
     self.CheckEventValues(storage_writer, events[2], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
     expected_event_values = {
         'application_display_name': 'OneDrive',
         'data_type': 'windows:timeline:generic',
+<<<<<<< HEAD
         'date_time': '2018-07-25T12:04:48+00:00',
         'description': '',
+=======
+        'description': None,
+>>>>>>> origin/main
         'package_identifier': 'Microsoft.SkyDrive.Desktop',
-        'timestamp_desc': definitions.TIME_DESCRIPTION_START}
+        'start_time': '2018-07-25T12:04:48+00:00'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[80], expected_event_values)
 
     expected_event_values = {
@@ -74,6 +85,10 @@ class WindowsTimelineTest(test_lib.SQLitePluginTestCase):
         'timestamp_desc': definitions.TIME_DESCRIPTION_START}
 
     self.CheckEventValues(storage_writer, events[96], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 80)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

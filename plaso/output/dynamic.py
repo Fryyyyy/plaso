@@ -150,6 +150,11 @@ class DynamicOutputModule(shared_dsv.DSVOutputModule):
       'datetime', 'timestamp_desc', 'source', 'source_long', 'message',
       'parser', 'display_name', 'tag']
 
+<<<<<<< HEAD
+=======
+  _SORT_KEY_FIELD_NAMES = ['datetime', 'display_name', 'message']
+
+>>>>>>> origin/main
   def __init__(self):
     """Initializes an output module."""
     field_formatting_helper = DynamicFieldFormattingHelper()

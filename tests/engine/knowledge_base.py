@@ -103,12 +103,6 @@ class KnowledgeBaseTest(shared_test_lib.BaseTestCase):
 
     self.assertEqual(len(knowledge_base_object.user_accounts), 1)
 
-  def testYearProperty(self):
-    """Tests the year property."""
-    knowledge_base_object = knowledge_base.KnowledgeBase()
-
-    self.assertEqual(knowledge_base_object.year, 0)
-
   def testAddUserAccount(self):
     """Tests the AddUserAccount function."""
     knowledge_base_object = knowledge_base.KnowledgeBase()
@@ -192,8 +186,6 @@ class KnowledgeBaseTest(shared_test_lib.BaseTestCase):
     self.assertIsNotNone(system_configuration)
     self.assertIsNotNone(system_configuration.hostname)
     self.assertEqual(system_configuration.hostname.name, 'myhost.mydomain')
-
-  # TODO: add tests for GetTextPrepend.
 
   def testGetUsernameByIdentifier(self):
     """Tests the GetUsernameByIdentifier function."""
@@ -322,8 +314,6 @@ class KnowledgeBaseTest(shared_test_lib.BaseTestCase):
 
     hostname_artifact = artifacts.HostnameArtifact(name='myhost.mydomain')
     knowledge_base_object.SetHostname(hostname_artifact)
-
-  # TODO: add tests for SetTextPrepend.
 
   def testSetTimeZone(self):
     """Tests the SetTimeZone function."""

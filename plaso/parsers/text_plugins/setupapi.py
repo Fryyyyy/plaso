@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Text parser plugin for Windows SetupAPI log files.
 
-The format is documented at:
-https://docs.microsoft.com/en-us/windows-hardware/drivers/install/setupapi-text-logs
+Also see:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/install/setupapi-text-logs
 """
 
 import pyparsing
@@ -10,9 +10,7 @@ import pyparsing
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
 from plaso.lib import errors
-from plaso.lib import definitions
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
@@ -21,10 +19,14 @@ class SetupAPILogEventData(events.EventData):
   """SetupAPI log event data.
 
   Attributes:
+    end_time (dfdatetime.DateTimeValues): date and time the end of the log
+        entry was added.
     entry_type (str): log entry type, for examaple "Device Install -
         PCI\\VEN_104C&DEV_8019&SUBSYS_8010104C&REV_00\\3&61aaa01&0&38" or
         "Sysprep Respecialize - {804b345a-ffd7-854c-a1b5-ca9598907846}".
     exit_status (str): the exit status of the logged operation.
+    start_time (dfdatetime.DateTimeValues): date and time the start of
+        the log entry was added.
   """
 
   DATA_TYPE = 'setupapi:log:line'
@@ -32,8 +34,10 @@ class SetupAPILogEventData(events.EventData):
   def __init__(self):
     """Initializes event data."""
     super(SetupAPILogEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.end_time = None
     self.entry_type = None
     self.exit_status = None
+    self.start_time = None
 
 
 class SetupAPILogTextPlugin(interface.TextPlugin):
@@ -42,131 +46,132 @@ class SetupAPILogTextPlugin(interface.TextPlugin):
   NAME = 'setupapi'
   DATA_FORMAT = 'Windows SetupAPI log file'
 
-  _SLASH = pyparsing.Literal('/').suppress()
+  _TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _FOUR_DIGITS = text_parser.PyparsingConstants.FOUR_DIGITS
-  _THREE_DIGITS = text_parser.PyparsingConstants.THREE_DIGITS
-  _TWO_DIGITS = text_parser.PyparsingConstants.TWO_DIGITS
+  _THREE_DIGITS = pyparsing.Word(pyparsing.nums, exact=3).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  _SETUPAPI_DATE_TIME = pyparsing.Group(
-      _FOUR_DIGITS + _SLASH +
-      _TWO_DIGITS + _SLASH +
-      _TWO_DIGITS +
+  _FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
+
+  # Date and time values are formatted as: 2015/11/22 17:59:28.110
+  _DATE_TIME = (
+      _FOUR_DIGITS + pyparsing.Suppress('/') +
+      _TWO_DIGITS + pyparsing.Suppress('/') + _TWO_DIGITS +
       _TWO_DIGITS + pyparsing.Suppress(':') +
-      _TWO_DIGITS + pyparsing.Suppress(':') +
-      _TWO_DIGITS +
-      pyparsing.Word('.,', exact=1).suppress() +
-      _THREE_DIGITS)
+      _TWO_DIGITS + pyparsing.Suppress(':') + _TWO_DIGITS +
+      pyparsing.Word('.,', exact=1).suppress() + _THREE_DIGITS)
 
-  # Disable pylint due to long URLs for documenting structures.
   # pylint: disable=line-too-long
-
   # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-header
-  _LOG_HEADER_START = (
-      pyparsing.Literal('[Device Install Log]') +
-      pyparsing.lineEnd())
+  # pylint: enable=line-too-long
+  _DEVICE_INSTALL_LOG_LINE = (
+      pyparsing.Literal('[Device Install Log]') + _END_OF_LINE)
 
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-header
-  _LOG_HEADER_END = (
-      pyparsing.Literal('[BeginLog]') +
-      pyparsing.lineEnd())
+  # Using a regular expression here is faster. Note that pyparsing 2 does not
+  # properly handle leading whitespace.
+  _HEADER_ENTRY_LINE = pyparsing.Regex(
+       r'(Architecture|OS Version|ProductType|Service Pack|Suite) = .*\n')
 
+  _BEGIN_LOG_LINE = pyparsing.Literal('[BeginLog]') + _END_OF_LINE
+
+  # pylint: disable=line-too-long
   # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-header
-  _SECTION_HEADER = (
-      pyparsing.Literal('>>>  [').suppress() +
-      pyparsing.CharsNotIn(']').setResultsName('entry_type') +
-      pyparsing.Literal(']') +
-      pyparsing.lineEnd())
-
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-header
-  _SECTION_HEADER_START = (
-      pyparsing.Literal('>>>  Section start').suppress() +
-      _SETUPAPI_DATE_TIME.setResultsName('start_time') +
-      pyparsing.lineEnd())
-
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-footer
-  _SECTION_END = (
-      pyparsing.Literal('<<<  Section end ').suppress() +
-      _SETUPAPI_DATE_TIME.setResultsName('end_time') +
-      pyparsing.lineEnd())
-
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-footer
-  _SECTION_END_EXIT_STATUS = (
-      pyparsing.Literal('<<<  [Exit status: ').suppress() +
-      pyparsing.CharsNotIn(']').setResultsName('exit_status') +
-      pyparsing.Literal(']') +
-      pyparsing.lineEnd())
-
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-log-entries-that-are-not-part-of-a-text-log-section
-  _SECTION_BODY_LINE = (
-      pyparsing.stringStart +
-      pyparsing.MatchFirst([
-          pyparsing.Literal('!!!  '),
-          pyparsing.Literal('!    '),
-          pyparsing.Literal('     ')]) +
-      pyparsing.restOfLine).leaveWhitespace()
-
-  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-log-entries-that-are-not-part-of-a-text-log-section
-  _NON_SECTION_LINE = (
-      pyparsing.stringStart +
-      pyparsing.MatchFirst([
-          pyparsing.Literal('   . '),
-          pyparsing.Literal('!!!  '),
-          pyparsing.Literal('!    '),
-          pyparsing.Literal('     ')]) +
-      pyparsing.restOfLine).leaveWhitespace()
-
-  # These lines do not appear to be documented in the Microsoft documentation.
-  _BOOT_SESSION_LINE = (
-      pyparsing.Literal('[Boot Session:') +
-      _SETUPAPI_DATE_TIME +
-      pyparsing.Literal(']'))
-
   # pylint: enable=line-too-long
 
+  # Using a regular expression here is faster.
+  _SECTION_HEADER_LINE = pyparsing.Regex(r'>>>  \[(?P<entry_type>[^\]]+)\]\n')
+
+  # Using a regular expression here is faster.
+  _SECTION_START_LINE = pyparsing.Regex(
+      r'>>>  Section start (?P<start_time>[0-9]{4}/[0-9]{2}/[0-9]{2} '
+      r'[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})\n')
+
+  # pylint: disable=line-too-long
+  # See https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-footer
+  # pylint: enable=line-too-long
+
+  # Using a regular expression here is faster.
+  _SECTION_END_LINE = pyparsing.Regex(
+      r'<<<  Section end (?P<end_time>[0-9]{4}/[0-9]{2}/[0-9]{2} '
+      r'[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3})\n')
+
+  # Using a regular expression here is faster.
+  _EXIT_STATUS_LINE = pyparsing.Regex(
+      r'<<<  \[Exit status: (?P<exit_status>[^\]]+)\]\n')
+
+  # pylint: disable=line-too-long
+  # See https://learn.microsoft.com/en-us/windows-hardware/drivers/install/format-of-a-text-log-section-body
+  # and https://docs.microsoft.com/en-us/windows-hardware/drivers/install/format-of-log-entries-that-are-not-part-of-a-text-log-section
+  # pylint: enable=line-too-long
+
+  # Note that undocumented event catagegories have been observed, such as:
+  # "cmd:", "idb:" and "pol:".
+
+  # Using a regular expression here is faster. Note that pyparsing 2 does not
+  # properly handle leading whitespace.
+  _LOG_ENTRY_LINE = pyparsing.Regex(
+      r'(|\. |!    |!!!  )[A-Za-z\.]{2,3}: .{0,336}\n')
+
+  # Undocumented observed lines.
+
+  # Using a regular expression here is faster.
+  _BOOT_SESSION_LINE = pyparsing.Regex(
+      r'[Boot Session: [0-9]{4}/[0-9]{2}/[0-9]{2} '
+      r'[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}]\n')
+
+  _HEADER_GRAMMAR = (
+      _DEVICE_INSTALL_LOG_LINE +
+      pyparsing.OneOrMore(_HEADER_ENTRY_LINE) +
+      _BEGIN_LOG_LINE)
+
   _LINE_STRUCTURES = [
-      ('ignorable_line', _BOOT_SESSION_LINE),
-      ('ignorable_line', _LOG_HEADER_END),
-      ('ignorable_line', _LOG_HEADER_START),
-      ('ignorable_line', _NON_SECTION_LINE),
-      ('ignorable_line', _SECTION_BODY_LINE),
-      ('section_end', _SECTION_END),
-      ('section_end_exit_status', _SECTION_END_EXIT_STATUS),
-      ('section_header', _SECTION_HEADER),
-      ('section_start', _SECTION_HEADER_START)]
+      ('boot_session_line', _BOOT_SESSION_LINE),
+      ('exit_status_line', _EXIT_STATUS_LINE),
+      ('log_entry_line', _LOG_ENTRY_LINE),
+      ('section_end_line', _SECTION_END_LINE),
+      ('section_header_line', _SECTION_HEADER_LINE),
+      ('section_start_line', _SECTION_START_LINE)]
+
+  VERIFICATION_GRAMMAR = _DEVICE_INSTALL_LOG_LINE
 
   def __init__(self):
     """Initializes a text parser plugin."""
     super(SetupAPILogTextPlugin, self).__init__()
-    self._last_end_time = None
-    self._last_entry_type = None
+    self._event_data = None
 
-  def _GetTimeElements(self, time_structure):
-    """Builds time elements from a SetupAPI time_stamp field.
+  def _ParseHeader(self, parser_mediator, text_reader):
+    """Parses a text-log file header.
 
     Args:
-      time_structure (pyparsing.ParseResults): structure of tokens derived from
-          a SetupAPI time_stamp field.
+      parser_mediator (ParserMediator): mediates interactions between parsers
+          and other components, such as storage and dfVFS.
+      text_reader (EncodedTextReader): text reader.
 
-    Returns:
-      dfdatetime.TimeElements: date and time extracted from the value or None
-          if the structure does not represent a valid date and time value.
+    Raises:
+      ParseError: when the header cannot be parsed.
     """
     try:
-      date_time = dfdatetime_time_elements.TimeElementsInMilliseconds(
-          time_elements_tuple=time_structure)
-      # SetupAPI logs store date and time values in local time.
-      date_time.is_local_time = True
-      return date_time
+      structure_generator = self._HEADER_GRAMMAR.scanString(
+          text_reader.lines, maxMatches=1)
+      structure, start, end = next(structure_generator)
 
-    except ValueError:
-      return None
+    except StopIteration:
+      structure = None
+
+    except pyparsing.ParseException as exception:
+      raise errors.ParseError(exception)
+
+    if not structure or start != 0:
+      raise errors.ParseError('No match found.')
+
+    text_reader.SkipAhead(end)
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -175,91 +180,110 @@ class SetupAPILogTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key == 'ignorable_line':
-      return
-
-    if key == 'section_header':
-      self._last_entry_type = self._GetValueFromStructure(
+    if key == 'section_header_line':
+      self._event_data = SetupAPILogEventData()
+      self._event_data.entry_type = self._GetValueFromStructure(
           structure, 'entry_type')
-      return
 
-    if key == 'section_start':
-      time_structure = self._GetValueFromStructure(structure, 'start_time')
-      start_time = self._GetTimeElements(time_structure)
-      if not start_time:
-        parser_mediator.ProduceExtractionWarning(
-            'invalid date time value: {0!s}'.format(time_structure))
-        return
+    elif key == 'section_start_line':
+      start_time_structure = self._GetValueFromStructure(
+          structure, 'start_time')
 
-      event_data = SetupAPILogEventData()
-      event_data.entry_type = self._last_entry_type
+      try:
+        time_elements_structure = self._DATE_TIME.parseString(
+            start_time_structure)
+      except pyparsing.ParseException as exception:
+        raise errors.ParseError(
+            'Unable to parse start time with error: {0!s}'.format(exception))
 
-      event = time_events.DateTimeValuesEvent(
-          start_time, definitions.TIME_DESCRIPTION_START,
-          time_zone=parser_mediator.timezone)
+      self._event_data.start_time = self._ParseTimeElements(
+          time_elements_structure)
 
-      # Create event for the start of the SetupAPI section
-      parser_mediator.ProduceEventWithEventData(event, event_data)
-      return
+    elif key == 'section_end_line':
+      end_time_structure = self._GetValueFromStructure(
+          structure, 'end_time')
 
-    if key == 'section_end':
-      time_structure = self._GetValueFromStructure(structure, 'end_time')
-      end_time = self._GetTimeElements(time_structure)
-      if not end_time:
-        parser_mediator.ProduceExtractionWarning(
-            'invalid date time value: {0!s}'.format(time_structure))
-      # Store last end time so that an event with the data from the
-      # following exit status section can be created.
-      self._last_end_time = end_time
-      return
+      try:
+        time_elements_structure = self._DATE_TIME.parseString(
+            end_time_structure)
+      except pyparsing.ParseException as exception:
+        raise errors.ParseError(
+            'Unable to parse end time with error: {0!s}'.format(exception))
 
-    if key == 'section_end_exit_status':
-      exit_status = self._GetValueFromStructure(
+      self._event_data.end_time = self._ParseTimeElements(
+          time_elements_structure)
+
+    elif key == 'exit_status_line':
+      self._event_data.exit_status = self._GetValueFromStructure(
           structure, 'exit_status')
-      if self._last_end_time:
-        event_data = SetupAPILogEventData()
-        event_data.entry_type = self._last_entry_type
-        event_data.exit_status = exit_status
-        event = time_events.DateTimeValuesEvent(
-            self._last_end_time, definitions.TIME_DESCRIPTION_END,
-            time_zone=parser_mediator.timezone)
-        parser_mediator.ProduceEventWithEventData(event, event_data)
-        # Reset entry type and status and end time in case a line is missing.
-        self._last_entry_type = None
-        self._last_end_time = None
-        return
 
-    raise errors.ParseError(
-        'Unable to parse record, unknown structure: {0:s}'.format(key))
+      parser_mediator.ProduceEventData(self._event_data)
 
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+      self._ResetState()
+
+  def _ParseTimeElements(self, time_elements_structure):
+    """Parses date and time elements of a log line.
+
+    Args:
+      time_elements_structure (pyparsing.ParseResults): date and time elements
+          of a log line.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value.
+
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
+    try:
+      (year, month, day_of_month, hours, minutes, seconds, milliseconds) = (
+          time_elements_structure)
+
+      # Ensure time_elements_tuple is not a pyparsing.ParseResults otherwise
+      # copy.deepcopy() of the dfDateTime object will fail on Python 3.8 with:
+      # "TypeError: 'str' object is not callable" due to pyparsing.ParseResults
+      # overriding __getattr__ with a function that returns an empty string
+      # when named token does not exist.
+      time_elements_tuple = (
+          year, month, day_of_month, hours, minutes, seconds, milliseconds)
+
+      date_time = dfdatetime_time_elements.TimeElementsInMilliseconds(
+          time_elements_tuple=time_elements_tuple)
+
+      # SetupAPI logs store date and time values in local time.
+      date_time.is_local_time = True
+
+      return date_time
+
+    except (TypeError, ValueError) as exception:
+      raise errors.ParseError(
+          'Unable to parse time elements with error: {0!s}'.format(exception))
+
+  def _ResetState(self):
+    """Resets stored values."""
+    self._event_data = None
+
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
-    # Reset stored values for parsing a new file.
-    self._last_end_time = None
-    self._last_entry_type = None
+    self._ResetState()
 
-    try:
-      parsed_structure = self._LOG_HEADER_START.parseString(line)
-    except pyparsing.ParseException:
-      parsed_structure = None
-
-    return bool(parsed_structure)
+    return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(SetupAPILogTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(SetupAPILogTextPlugin)

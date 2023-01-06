@@ -102,13 +102,14 @@ class ExtractionTool(
     self._queue_size = self._DEFAULT_QUEUE_SIZE
     self._resolver_context = dfvfs_context.Context()
     self._single_process_mode = False
-    self._status_view_mode = status_view.StatusView.MODE_WINDOW
     self._status_view = status_view.StatusView(self._output_writer, self.NAME)
+    self._status_view_file = 'status.info'
+    self._status_view_interval = 0.5
+    self._status_view_mode = status_view.StatusView.MODE_WINDOW
     self._storage_file_path = None
     self._storage_format = definitions.STORAGE_FORMAT_SQLITE
     self._task_storage_format = definitions.STORAGE_FORMAT_SQLITE
     self._temporary_directory = None
-    self._text_prepend = None
     self._worker_memory_limit = None
     self._worker_timeout = None
     self._yara_rules_string = None
@@ -154,6 +155,7 @@ class ExtractionTool(
       ProcessingConfiguration: extraction processing configuration.
     """
     configuration = configurations.ProcessingConfiguration()
+    configuration.data_location = self._data_location
     configuration.extraction.archive_types_string = self._archive_types_string
     configuration.artifact_filters = self._artifact_filters
     configuration.credentials = self._credential_configurations
@@ -170,6 +172,7 @@ class ExtractionTool(
     configuration.log_filename = self._log_file
     configuration.parser_filter_expression = (
         self._expanded_parser_filter_expression)
+    configuration.preferred_codepage = self._preferred_codepage
     configuration.preferred_language = self._preferred_language
     configuration.preferred_time_zone = self._preferred_time_zone
     configuration.preferred_year = self._preferred_year
@@ -178,7 +181,6 @@ class ExtractionTool(
     configuration.profiling.profilers = self._profilers
     configuration.task_storage_format = self._task_storage_format
     configuration.temporary_directory = self._temporary_directory
-    configuration.text_prepend = self._text_prepend
 
     return configuration
 
@@ -204,12 +206,12 @@ class ExtractionTool(
     session_configuration.identifier = session.identifier
     session_configuration.parser_filter_expression = (
         self._parser_filter_expression)
+    session_configuration.preferred_codepage = self._preferred_codepage
     session_configuration.preferred_encoding = self.preferred_encoding
-    session_configuration. preferred_language = (
+    session_configuration.preferred_language = (
         self._preferred_language or 'en-US')
     session_configuration.preferred_time_zone = self._preferred_time_zone
     session_configuration.preferred_year = self._preferred_year
-    session_configuration.text_prepend = self._text_prepend
 
     return session_configuration
 
@@ -304,55 +306,6 @@ class ExtractionTool(
 
     return ','.join(sorted(parser_elements))
 
-  def _IsArchiveFile(self, path_spec):
-    """Determines if a path specification references an archive file.
-
-    Args:
-      path_spec (dfvfs.PathSpec): path specification of the data stream.
-
-    Returns:
-      bool: True if the path specification references a supported archive file
-          format, False otherwise.
-    """
-    try:
-      type_indicators = (
-          dfvfs_analyzer.Analyzer.GetCompressedStreamTypeIndicators(
-              path_spec, resolver_context=self._resolver_context))
-    except IOError:
-      type_indicators = []
-
-    if len(type_indicators) > 1:
-      return False
-
-    if type_indicators:
-      type_indicator = type_indicators[0]
-    else:
-      type_indicator = None
-
-    if type_indicator == dfvfs_definitions.TYPE_INDICATOR_BZIP2:
-      path_spec = path_spec_factory.Factory.NewPathSpec(
-          dfvfs_definitions.TYPE_INDICATOR_COMPRESSED_STREAM,
-          compression_method=dfvfs_definitions.COMPRESSION_METHOD_BZIP2,
-          parent=path_spec)
-
-    elif type_indicator == dfvfs_definitions.TYPE_INDICATOR_GZIP:
-      path_spec = path_spec_factory.Factory.NewPathSpec(
-          dfvfs_definitions.TYPE_INDICATOR_GZIP, parent=path_spec)
-
-    elif type_indicator == dfvfs_definitions.TYPE_INDICATOR_XZ:
-      path_spec = path_spec_factory.Factory.NewPathSpec(
-          dfvfs_definitions.TYPE_INDICATOR_COMPRESSED_STREAM,
-          compression_method=dfvfs_definitions.COMPRESSION_METHOD_XZ,
-          parent=path_spec)
-
-    try:
-      type_indicators = dfvfs_analyzer.Analyzer.GetArchiveTypeIndicators(
-          path_spec, resolver_context=self._resolver_context)
-    except IOError:
-      type_indicators = []
-
-    return bool(type_indicators)
-
   def _ParseExtractionOptions(self, options):
     """Parses the extraction options.
 
@@ -363,7 +316,7 @@ class ExtractionTool(
       BadConfigOption: if the options are invalid.
     """
     helpers_manager.ArgumentHelperManager.ParseOptions(
-        options, self, names=['language'])
+        options, self, names=['codepage', 'language'])
 
     if self._process_archives:
       self._archive_types_string = 'tar,zip'
@@ -440,6 +393,10 @@ class ExtractionTool(
       dfvfs_definitions.PREFERRED_EXT_BACK_END = (
           dfvfs_definitions.TYPE_INDICATOR_EXT)
 
+    elif self._vfs_back_end == 'fsfat':
+      dfvfs_definitions.PREFERRED_FAT_BACK_END = (
+          dfvfs_definitions.TYPE_INDICATOR_FAT)
+
     elif self._vfs_back_end == 'fshfs':
       dfvfs_definitions.PREFERRED_HFS_BACK_END = (
           dfvfs_definitions.TYPE_INDICATOR_HFS)
@@ -450,6 +407,8 @@ class ExtractionTool(
 
     elif self._vfs_back_end == 'tsk':
       dfvfs_definitions.PREFERRED_EXT_BACK_END = (
+          dfvfs_definitions.TYPE_INDICATOR_TSK)
+      dfvfs_definitions.PREFERRED_FAT_BACK_END = (
           dfvfs_definitions.TYPE_INDICATOR_TSK)
       dfvfs_definitions.PREFERRED_GPT_BACK_END = (
           dfvfs_definitions.TYPE_INDICATOR_TSK_PARTITION)
@@ -497,16 +456,9 @@ class ExtractionTool(
     Raises:
       BadConfigOption: if an invalid collection filter was specified.
     """
-    is_archive = False
-    if self._source_type == dfvfs_definitions.SOURCE_TYPE_FILE:
-      is_archive = self._IsArchiveFile(self._source_path_specs[0])
-      if is_archive:
-        self._source_type = definitions.SOURCE_TYPE_ARCHIVE
-
     single_process_mode = self._single_process_mode
     if self._source_type == dfvfs_definitions.SOURCE_TYPE_FILE:
-      if self._archive_types_string == 'none' or not is_archive:
-        single_process_mode = True
+      single_process_mode = True
 
     if single_process_mode:
       extraction_engine = single_extraction_engine.SingleProcessEngine()
@@ -515,6 +467,8 @@ class ExtractionTool(
           number_of_worker_processes=self._number_of_extraction_workers,
           worker_memory_limit=self._worker_memory_limit,
           worker_timeout=self._worker_timeout)
+
+    extraction_engine.SetStatusUpdateInterval(self._status_view_interval)
 
     # If the source is a directory or a storage media image
     # run pre-processing.
@@ -531,7 +485,7 @@ class ExtractionTool(
 
     force_parser = False
     if (self._source_type == dfvfs_definitions.SOURCE_TYPE_FILE and
-        not is_archive and number_of_enabled_parsers == 1):
+        number_of_enabled_parsers == 1):
       force_parser = True
 
       self._extract_winevt_resources = False
@@ -623,6 +577,59 @@ class ExtractionTool(
           'Unable to read parser presets from file with error: {0!s}'.format(
               exception))
 
+  def _ScanSourceForArchive(self, path_spec):
+    """Determines if a path specification references an archive file.
+
+    Args:
+      path_spec (dfvfs.PathSpec): path specification of the data stream.
+
+    Returns:
+      dfvfs.PathSpec: path specification of the archive file or None if not
+          an archive file.
+    """
+    try:
+      type_indicators = (
+          dfvfs_analyzer.Analyzer.GetCompressedStreamTypeIndicators(
+              path_spec, resolver_context=self._resolver_context))
+    except IOError:
+      type_indicators = []
+
+    if len(type_indicators) > 1:
+      return False
+
+    if type_indicators:
+      type_indicator = type_indicators[0]
+    else:
+      type_indicator = None
+
+    if type_indicator == dfvfs_definitions.TYPE_INDICATOR_BZIP2:
+      path_spec = path_spec_factory.Factory.NewPathSpec(
+          dfvfs_definitions.TYPE_INDICATOR_COMPRESSED_STREAM,
+          compression_method=dfvfs_definitions.COMPRESSION_METHOD_BZIP2,
+          parent=path_spec)
+
+    elif type_indicator == dfvfs_definitions.TYPE_INDICATOR_GZIP:
+      path_spec = path_spec_factory.Factory.NewPathSpec(
+          dfvfs_definitions.TYPE_INDICATOR_GZIP, parent=path_spec)
+
+    elif type_indicator == dfvfs_definitions.TYPE_INDICATOR_XZ:
+      path_spec = path_spec_factory.Factory.NewPathSpec(
+          dfvfs_definitions.TYPE_INDICATOR_COMPRESSED_STREAM,
+          compression_method=dfvfs_definitions.COMPRESSION_METHOD_XZ,
+          parent=path_spec)
+
+    try:
+      type_indicators = dfvfs_analyzer.Analyzer.GetArchiveTypeIndicators(
+          path_spec, resolver_context=self._resolver_context)
+    except IOError:
+      return None
+
+    if len(type_indicators) != 1:
+      return None
+
+    return path_spec_factory.Factory.NewPathSpec(
+        type_indicators[0], location='/', parent=path_spec)
+
   def AddExtractionOptions(self, argument_group):
     """Adds the extraction options to the argument group.
 
@@ -630,7 +637,7 @@ class ExtractionTool(
       argument_group (argparse._ArgumentGroup): argparse argument group.
     """
     helpers_manager.ArgumentHelperManager.AddCommandLineArguments(
-        argument_group, names=['language'])
+        argument_group, names=['codepage', 'language'])
 
     # Note defaults here are None so we can determine if an option was set.
 
@@ -707,7 +714,15 @@ class ExtractionTool(
     except dfvfs_errors.UserAbort as exception:
       raise errors.UserAbort(exception)
 
+    if self._source_type == dfvfs_definitions.SOURCE_TYPE_FILE:
+      archive_path_spec = self._ScanSourceForArchive(
+          self._source_path_specs[0])
+      if archive_path_spec:
+        self._source_path_specs = [archive_path_spec]
+        self._source_type = definitions.SOURCE_TYPE_ARCHIVE
+
     self._status_view.SetMode(self._status_view_mode)
+    self._status_view.SetStatusFile(self._status_view_file)
     self._status_view.SetSourceInformation(
         self._source_path, self._source_type,
         artifact_filters=self._artifact_filters,
@@ -771,7 +786,7 @@ class ExtractionTool(
         self._views_format_type, column_names=['Name', 'Description'],
         title='Archive and storage media image types')
 
-    for name, description in sorted(self._SUPPORTED_ARCHIVE_TYPES):
+    for name, description in sorted(self._SUPPORTED_ARCHIVE_TYPES.items()):
       table_view.AddRow([name, description])
 
     table_view.Write(self._output_writer)

@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The extractor class definitions.
-
-An extractor is a class used to extract information from "raw" data.
-"""
+"""Extractor classes, used to extract information from sources."""
 
 import copy
 import re
@@ -20,11 +17,8 @@ from plaso.parsers import interface as parsers_interface
 from plaso.parsers import manager as parsers_manager
 
 
-class EventExtractor(object):
-  """Event extractor.
-
-  An event extractor extracts events from event sources.
-  """
+class EventDataExtractor(object):
+  """The event data extractor."""
 
   _PARSE_RESULT_FAILURE = 1
   _PARSE_RESULT_SUCCESS = 2
@@ -43,15 +37,14 @@ class EventExtractor(object):
           denotes which parsers and plugins should be used. See
           filters/parser_filter.py for details of the expression syntax.
     """
-    super(EventExtractor, self).__init__()
-    self._file_scanner = None
+    super(EventDataExtractor, self).__init__()
     self._filestat_parser = None
     self._force_parser = force_parser
+    self._format_scanner = None
     self._formats_with_signatures = None
     self._mft_parser = None
     self._non_sigscan_parser_names = None
     self._parsers = None
-    self._parsers_profiler = None
     self._usnjrnl_parser = None
 
     self._InitializeParserObjects(
@@ -86,7 +79,7 @@ class EventExtractor(object):
     """
     parser_names = []
     scan_state = pysigscan.scan_state()
-    self._file_scanner.scan_file_object(scan_state, file_object)
+    self._format_scanner.scan_file_object(scan_state, file_object)
 
     for scan_result in iter(scan_state.scan_results):
       format_specification = (
@@ -118,8 +111,9 @@ class EventExtractor(object):
       if parser_name not in ('filestat', 'usnjrnl'):
         self._non_sigscan_parser_names.append(parser_name)
 
-    self._file_scanner = parsers_manager.ParsersManager.CreateSignatureScanner(
-        self._formats_with_signatures)
+    self._format_scanner = (
+        parsers_manager.ParsersManager.CreateSignatureScanner(
+            self._formats_with_signatures))
 
     self._parsers = parsers_manager.ParsersManager.GetParserObjects(
         parser_filter_expression=parser_filter_expression)
@@ -186,8 +180,6 @@ class EventExtractor(object):
 
     parser_mediator.ClearParserChain()
 
-    parser_mediator.SampleStartTiming(parser.NAME)
-
     try:
       if isinstance(parser, parsers_interface.FileEntryParser):
         parser.Parse(parser_mediator)
@@ -210,9 +202,7 @@ class EventExtractor(object):
               parser.NAME, display_name, exception))
       result = self._PARSE_RESULT_UNSUPPORTED
 
-    finally:
-      parser_mediator.SampleStopTiming(parser.NAME)
-      parser_mediator.SampleMemoryUsage(parser.NAME)
+    parser_mediator.SampleMemoryUsage(parser.NAME)
 
     return result
 
@@ -283,7 +273,11 @@ class EventExtractor(object):
       raise RuntimeError(
           'Unable to retrieve file-like object from file entry.')
 
-    parser_names = self._GetSignatureMatchParserNames(file_object)
+    parser_mediator.SampleFormatCheckStartTiming('format_scanner')
+    try:
+      parser_names = self._GetSignatureMatchParserNames(file_object)
+    finally:
+      parser_mediator.SampleFormatCheckStopTiming('format_scanner')
 
     parse_with_non_sigscan_parsers = True
     if parser_names:

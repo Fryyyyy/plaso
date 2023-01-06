@@ -6,17 +6,17 @@ import pyparsing
 from dfdatetime import time_elements as dfdatetime_time_elements
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.lib import errors
 from plaso.parsers import text_parser
 from plaso.parsers.text_plugins import interface
 
 
-class VsftpdEventData(events.EventData):
-  """vsftpd Log event data.
+class VsftpdLogEventData(events.EventData):
+  """vsftpd log event data.
 
   Attributes:
+    added_time (dfdatetime.DateTimeValues): date and time the log entry
+        was added.
     text (str): vsftpd log message.
   """
 
@@ -24,7 +24,8 @@ class VsftpdEventData(events.EventData):
 
   def __init__(self):
     """Initializes event data."""
-    super(VsftpdEventData, self).__init__(data_type=self.DATA_TYPE)
+    super(VsftpdLogEventData, self).__init__(data_type=self.DATA_TYPE)
+    self.added_time = None
     self.text = None
 
 
@@ -48,27 +49,34 @@ class VsftpdLogTextPlugin(interface.TextPlugin):
       'nov': 11,
       'dec': 12}
 
-  _DATETIME_ELEMENTS = (
-      text_parser.PyparsingConstants.THREE_LETTERS.setResultsName('day') +
-      text_parser.PyparsingConstants.THREE_LETTERS.setResultsName('month') +
-      text_parser.PyparsingConstants.ONE_OR_TWO_DIGITS.setResultsName(
-          'day_of_month') +
-      text_parser.PyparsingConstants.TWO_DIGITS.setResultsName('hours') +
-      pyparsing.Suppress(':') +
-      text_parser.PyparsingConstants.TWO_DIGITS.setResultsName('minutes') +
-      pyparsing.Suppress(':') +
-      text_parser.PyparsingConstants.TWO_DIGITS.setResultsName('seconds') +
-      text_parser.PyparsingConstants.FOUR_DIGITS.setResultsName('year'))
+  _ONE_OR_TWO_DIGITS = pyparsing.Word(pyparsing.nums, max=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
 
-  # Whitespace is suppressed by pyparsing.
-  _DATE_TIME = pyparsing.Group(_DATETIME_ELEMENTS)
+  _TWO_DIGITS = pyparsing.Word(pyparsing.nums, exact=2).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
+  _FOUR_DIGITS = pyparsing.Word(pyparsing.nums, exact=4).setParseAction(
+      lambda tokens: int(tokens[0], 10))
+
+  _THREE_LETTERS = pyparsing.Word(pyparsing.alphas, exact=3)
+
+  # Date and time values are formatted as: Mon Jun  6 18:43:28 2016
+  _DATE_TIME = pyparsing.Group(
+      _THREE_LETTERS + _THREE_LETTERS + _ONE_OR_TWO_DIGITS +
+      _TWO_DIGITS + pyparsing.Suppress(':') +
+      _TWO_DIGITS + pyparsing.Suppress(':') + _TWO_DIGITS +
+      _FOUR_DIGITS)
+
+  _END_OF_LINE = pyparsing.Suppress(pyparsing.LineEnd())
 
   _LOG_LINE = (
       _DATE_TIME.setResultsName('date_time') +
-      pyparsing.SkipTo(pyparsing.lineEnd).setResultsName('text'))
+      pyparsing.restOfLine().setResultsName('text') +
+      _END_OF_LINE)
 
-  _LINE_STRUCTURES = [('logline', _LOG_LINE)]
+  _LINE_STRUCTURES = [('log_line', _LOG_LINE)]
 
+<<<<<<< HEAD
   _SUPPORTED_KEYS = frozenset([key for key, _ in _LINE_STRUCTURES])
 
   def _GetTimeElementsTuple(self, structure):
@@ -117,12 +125,12 @@ class VsftpdLogTextPlugin(interface.TextPlugin):
         date_time, definitions.TIME_DESCRIPTION_ADDED,
         time_zone=parser_mediator.timezone)
     parser_mediator.ProduceEventWithEventData(event, event_data)
+=======
+  VERIFICATION_GRAMMAR = _LOG_LINE
+>>>>>>> origin/main
 
   def _ParseRecord(self, parser_mediator, key, structure):
-    """Parses a log record structure and produces events.
-
-    This function takes as an input a parsed pyparsing structure
-    and produces an EventObject if possible from that structure.
+    """Parses a pyparsing structure.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
@@ -131,34 +139,70 @@ class VsftpdLogTextPlugin(interface.TextPlugin):
       structure (pyparsing.ParseResults): tokens from a parsed log line.
 
     Raises:
-      ParseError: when the structure type is unknown.
+      ParseError: if the structure cannot be parsed.
     """
-    if key not in self._SUPPORTED_KEYS:
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
+
+    event_data = VsftpdLogEventData()
+    event_data.added_time = self._ParseTimeElements(time_elements_structure)
+    # TODO: extract pid and username.
+    event_data.text = self._GetStringValueFromStructure(structure, 'text')
+
+    parser_mediator.ProduceEventData(event_data)
+
+  def _ParseTimeElements(self, time_elements_structure):
+    """Parses date and time elements of a log line.
+
+    Args:
+      time_elements_structure (pyparsing.ParseResults): date and time elements
+          of a log line.
+
+    Returns:
+      dfdatetime.TimeElements: date and time value.
+
+    Raises:
+      ParseError: if a valid date and time value cannot be derived from
+          the time elements.
+    """
+    try:
+      _, month_string, day_of_month, hours, minutes, seconds, year = (
+          time_elements_structure)
+
+      month = self._MONTH_DICT.get(month_string.lower(), 0)
+
+      time_elements_tuple = (year, month, day_of_month, hours, minutes, seconds)
+      date_time = dfdatetime_time_elements.TimeElements(
+          time_elements_tuple=time_elements_tuple)
+      date_time.is_local_time = True
+
+      return date_time
+
+    except (TypeError, ValueError) as exception:
       raise errors.ParseError(
-          'Unable to parse record, unknown structure: {0:s}'.format(key))
+          'Unable to parse time elements with error: {0!s}'.format(exception))
 
-    self._ParseLogLine(parser_mediator, structure)
-
-  def CheckRequiredFormat(self, parser_mediator, text_file_object):
+  def CheckRequiredFormat(self, parser_mediator, text_reader):
     """Check if the log record has the minimal structure required by the plugin.
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
           and other components, such as storage and dfVFS.
-      text_file_object (dfvfs.TextFile): text file.
+      text_reader (EncodedTextReader): text reader.
 
     Returns:
       bool: True if this is the correct parser, False otherwise.
     """
     try:
-      line = self._ReadLineOfText(text_file_object)
-    except UnicodeDecodeError:
+      structure = self._VerifyString(text_reader.lines)
+    except errors.ParseError:
       return False
 
-    if line and (' [pid ' not in line or ': Client ' not in line):
-      return False
+    time_elements_structure = self._GetValueFromStructure(
+        structure, 'date_time')
 
     try:
+<<<<<<< HEAD
       parsed_structure = self._LOG_LINE.parseString(line)
     except pyparsing.ParseException:
       return False
@@ -168,9 +212,13 @@ class VsftpdLogTextPlugin(interface.TextPlugin):
       dfdatetime_time_elements.TimeElements(
           time_elements_tuple=time_elements_tuple)
     except (TypeError, ValueError):
+=======
+      self._ParseTimeElements(time_elements_structure)
+    except errors.ParseError:
+>>>>>>> origin/main
       return False
 
     return True
 
 
-text_parser.SingleLineTextParser.RegisterPlugin(VsftpdLogTextPlugin)
+text_parser.TextLogParser.RegisterPlugin(VsftpdLogTextPlugin)

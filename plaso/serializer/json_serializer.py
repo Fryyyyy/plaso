@@ -6,6 +6,9 @@ import codecs
 import collections
 import json
 
+from acstore.containers import interface as containers_interface
+from acstore.containers import manager as containers_manager
+
 from dfdatetime import interface as dfdatetime_interface
 from dfdatetime import serializer as dfdatetime_serializer
 
@@ -17,8 +20,6 @@ from dfvfs.path import factory as dfvfs_path_spec_factory
 # the dfDateTime factory.
 from dfvfs.vfs import tsk_file_entry  # pylint: disable=unused-import
 
-from plaso.containers import interface as containers_interface
-from plaso.containers import manager as containers_manager
 from plaso.serializer import logger
 
 
@@ -52,8 +53,7 @@ class JSONAttributeContainerSerializer(object):
     """
     json_dict = {
         '__type__': 'AttributeContainer',
-        '__container_type__': attribute_container.CONTAINER_TYPE,
-    }
+        '__container_type__': attribute_container.CONTAINER_TYPE}
 
     for attribute_name, attribute_value in attribute_container.GetAttributes():
       json_dict[attribute_name] = cls._ConvertValueToJSON(attribute_value)
@@ -136,16 +136,6 @@ class JSONAttributeContainerSerializer(object):
 
     supported_attribute_names = attribute_container.GetAttributeNames()
     for attribute_name, attribute_value in json_dict.items():
-      # Convert attribute names to provide backwards compatibility for previous
-      # variants of attribute containers.
-      if (container_type == 'event' and
-          attribute_name == 'event_data_row_identifier'):
-        attribute_name = '_event_data_row_identifier'
-
-      elif (container_type == 'event_tag' and
-            attribute_name == 'event_row_identifier'):
-        attribute_name = '_event_row_identifier'
-
       # Be strict about which attributes to set in non event data attribute
       # containers.
       if (container_type != 'event_data' and

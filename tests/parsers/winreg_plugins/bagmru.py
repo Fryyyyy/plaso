@@ -62,9 +62,12 @@ class TestBagMRUWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
     number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
         'event_data')
     self.assertEqual(number_of_event_data, 9)
+<<<<<<< HEAD
 
     number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
     self.assertEqual(number_of_events, 15)
+=======
+>>>>>>> origin/main
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -74,20 +77,36 @@ class TestBagMRUWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetEvents())
+    expected_event_values = {
+        'data_type': 'windows:registry:bagmru',
+        'entries': 'Index: 1 [MRU Value 0]: Shell item path: <My Computer>',
+        'key_path': key_path,
+        'last_written_time': '2009-08-04T15:19:16.9977500+00:00'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 0)
+    self.CheckEventData(event_data, expected_event_values)
 
     expected_event_values = {
         'data_type': 'windows:registry:bagmru',
+<<<<<<< HEAD
         'date_time': '2009-08-04T15:19:16.9977500+00:00',
         'entries': 'Index: 1 [MRU Value 0]: Shell item path: <My Computer>',
         # This should just be the plugin name, as we're invoking it directly,
         # and not through the parser.
         'parser': plugin.NAME}
+=======
+        'entries': (
+            'Index: 1 [MRU Value 0]: Shell item path: <My Computer> C:\\'),
+        'key_path': '{0:s}\\0'.format(key_path),
+        'last_written_time': '2009-08-04T15:19:10.6696250+00:00'}
+>>>>>>> origin/main
 
-    self.CheckEventValues(storage_writer, events[0], expected_event_values)
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
 
     expected_event_values = {
         'data_type': 'windows:registry:bagmru',
+<<<<<<< HEAD
         'date_time': '2009-08-04T15:19:10.6696250+00:00',
         'entries': (
             'Index: 1 [MRU Value 0]: Shell item path: <My Computer> C:\\')}
@@ -100,6 +119,14 @@ class TestBagMRUWindowsRegistryPlugin(test_lib.RegistryPluginTestCase):
         'key_path': '{0:s}\\0\\0\\0\\0\\0'.format(key_path)}
 
     self.CheckEventValues(storage_writer, events[5], expected_event_values)
+=======
+        'entries': None,
+        'key_path': '{0:s}\\0\\0\\0\\0\\0'.format(key_path),
+        'last_written_time': '2009-08-04T15:19:16.9977500+00:00'}
+
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 8)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

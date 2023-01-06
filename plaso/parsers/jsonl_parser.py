@@ -50,7 +50,7 @@ class JSONLParser(interface.FileObjectParser):
       raise errors.WrongParser('Not a JSON-L file.')
 
     line = line.strip()
-    if line[0] != '{' and line[-1] != '}':
+    if not line or (line[0] != '{' and line[-1] != '}'):
       raise errors.WrongParser(
           'Not a JSON-L file, missing opening and closing braces.')
 
@@ -62,19 +62,35 @@ class JSONLParser(interface.FileObjectParser):
     if not json_dict:
       raise errors.WrongParser('Not a JSON-L file, missing JSON.')
 
-    for plugin in self._plugins:
+    for plugin_name, plugin in self._plugins_per_name.items():
       if parser_mediator.abort:
         break
 
-      if plugin.CheckRequiredFormat(json_dict):
-        try:
-          plugin.UpdateChainAndProcess(
-              parser_mediator, file_object=file_object)
+      profiling_name = '/'.join([self.NAME, plugin.NAME])
 
-        except Exception as exception:  # pylint: disable=broad-except
-          parser_mediator.ProduceExtractionWarning((
-              'plugin: {0:s} unable to parse JSON-L file with error: '
-              '{1!s}').format(plugin.NAME, exception))
+      parser_mediator.SampleFormatCheckStartTiming(profiling_name)
+
+      try:
+        result = plugin.CheckRequiredFormat(json_dict)
+      finally:
+        parser_mediator.SampleFormatCheckStopTiming(profiling_name)
+
+      if not result:
+        continue
+
+      parser_mediator.SampleStartTiming(profiling_name)
+
+      try:
+        plugin.UpdateChainAndProcess(
+            parser_mediator, file_object=file_object)
+
+      except Exception as exception:  # pylint: disable=broad-except
+        parser_mediator.ProduceExtractionWarning((
+            'plugin: {0:s} unable to parse JSON-L file with error: '
+            '{1!s}').format(plugin_name, exception))
+
+      finally:
+        parser_mediator.SampleStopTiming(profiling_name)
 
 
 manager.ParsersManager.RegisterParser(JSONLParser)

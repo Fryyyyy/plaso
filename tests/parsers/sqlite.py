@@ -112,13 +112,13 @@ class SQLiteParserTest(test_lib.ParserTestCase):
     number_of_plugins = len(parser._plugin_classes)
 
     parser.EnablePlugins([])
-    self.assertEqual(len(parser._plugins), 0)
+    self.assertEqual(len(parser._plugins_per_name), 0)
 
     parser.EnablePlugins(parser.ALL_PLUGINS)
-    self.assertEqual(len(parser._plugins), number_of_plugins)
+    self.assertEqual(len(parser._plugins_per_name), number_of_plugins)
 
     parser.EnablePlugins(['chrome_27_history'])
-    self.assertEqual(len(parser._plugins), 1)
+    self.assertEqual(len(parser._plugins_per_name), 1)
 
   def testGetFormatSpecification(self):
     """Tests the GetFormatSpecification function."""
@@ -130,8 +130,9 @@ class SQLiteParserTest(test_lib.ParserTestCase):
     parser = sqlite.SQLiteParser()
     storage_writer = self._ParseFile(['contacts2.db'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 5)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 3)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -141,17 +142,14 @@ class SQLiteParserTest(test_lib.ParserTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    for event in storage_writer.GetEvents():
-      event_data = self._GetEventDataOfEvent(storage_writer, event)
-      self.assertEqual(1, event_data.parser.count('/'))
-
   def testParseFileEntryOnDatabaseWithDotInTableName(self):
     """Tests ParseFileEntry on a database with a dot in a table name."""
     parser = sqlite.SQLiteParser()
     storage_writer = self._ParseFile(['data.db'], parser)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 0)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 0)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')

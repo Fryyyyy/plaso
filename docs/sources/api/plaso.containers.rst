@@ -92,26 +92,10 @@ plaso.containers.sessions module
    :undoc-members:
    :show-inheritance:
 
-plaso.containers.shell\_item\_events module
--------------------------------------------
-
-.. automodule:: plaso.containers.shell_item_events
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 plaso.containers.tasks module
 -----------------------------
 
 .. automodule:: plaso.containers.tasks
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.containers.time\_events module
-------------------------------------
-
-.. automodule:: plaso.containers.time_events
    :members:
    :undoc-members:
    :show-inheritance:

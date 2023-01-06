@@ -4,9 +4,10 @@
 import time
 import uuid
 
+from acstore.containers import interface
+from acstore.containers import manager
+
 import plaso
-from plaso.containers import interface
-from plaso.containers import manager
 
 
 class Session(interface.AttributeContainer):
@@ -32,6 +33,7 @@ class Session(interface.AttributeContainer):
     parser_filter_expression (str): parser filter expression.
     parsers_counter (collections.Counter): number of events per parser or
         parser plugin.
+    preferred_codepage (str): preferred codepage.
     preferred_encoding (str): preferred encoding.
     preferred_language (str): preferred language.
     preferred_time_zone (str): preferred time zone.
@@ -43,7 +45,6 @@ class Session(interface.AttributeContainer):
         that are (or going to be) processed.
     start_time (int): time that the session was started. Contains the number
         of micro seconds since January 1, 1970, 00:00:00 UTC.
-    text_prepend (str): text to prepend to every display name.
   """
   CONTAINER_TYPE = 'session'
 
@@ -67,6 +68,7 @@ class Session(interface.AttributeContainer):
     self.parser_filter_expression = None
     # TODO: kept for backwards compatibility.
     self.parsers_counter = None
+    self.preferred_codepage = None
     self.preferred_encoding = 'utf-8'
     self.preferred_language = None
     self.preferred_time_zone = 'UTC'
@@ -76,7 +78,6 @@ class Session(interface.AttributeContainer):
     # TODO: kept for backwards compatibility.
     self.source_configurations = None
     self.start_time = int(time.time() * 1000000)
-    self.text_prepend = None
 
   def CopyAttributesFromSessionCompletion(self, session_completion):
     """Copies attributes from a session completion.
@@ -122,11 +123,11 @@ class Session(interface.AttributeContainer):
     self.filter_file = session_configuration.filter_file
     self.parser_filter_expression = (
         session_configuration.parser_filter_expression)
+    self.preferred_codepage = session_configuration.preferred_codepage
     self.preferred_encoding = session_configuration.preferred_encoding
     self.preferred_language = session_configuration.preferred_language
     self.preferred_time_zone = session_configuration.preferred_time_zone
     self.source_configurations = session_configuration.source_configurations
-    self.text_prepend = session_configuration.text_prepend
 
   def CopyAttributesFromSessionStart(self, session_start):
     """Copies attributes from a session start.
@@ -154,6 +155,8 @@ class Session(interface.AttributeContainer):
     self.parser_filter_expression = getattr(
         session_start, 'parser_filter_expression',
         self.parser_filter_expression)
+    self.preferred_codepage = getattr(
+        session_start, 'preferred_codepage', self.preferred_codepage)
     self.preferred_encoding = getattr(
         session_start, 'preferred_encoding', self.preferred_encoding)
     self.preferred_language = getattr(
@@ -247,13 +250,13 @@ class SessionConfiguration(interface.AttributeContainer):
     filter_file (str): path to a file with find specifications.
     identifier (str): unique identifier of the session.
     parser_filter_expression (str): parser filter expression.
+    preferred_codepage (str): preferred codepage.
     preferred_encoding (str): preferred encoding.
     preferred_language (str): preferred language.
     preferred_time_zone (str): preferred time zone.
     preferred_year (int): preferred year.
     source_configurations (list[SourceConfiguration]): configuration of sources
         that are (or going to be) processed.
-    text_prepend (str): text to prepend to every display name.
   """
   CONTAINER_TYPE = 'session_configuration'
 
@@ -274,13 +277,13 @@ class SessionConfiguration(interface.AttributeContainer):
     self.filter_file = None
     self.identifier = identifier
     self.parser_filter_expression = None
+    self.preferred_codepage = None
     self.preferred_encoding = None
     self.preferred_language = None
     self.preferred_time_zone = None
     self.preferred_year = None
     # TODO: kept for backwards compatibility.
     self.source_configurations = None
-    self.text_prepend = None
 
 
 class SessionStart(interface.AttributeContainer):

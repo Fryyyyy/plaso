@@ -36,6 +36,14 @@ plaso.cli.helpers.artifact\_filters module
    :undoc-members:
    :show-inheritance:
 
+plaso.cli.helpers.codepage module
+---------------------------------
+
+.. automodule:: plaso.cli.helpers.codepage
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 plaso.cli.helpers.data\_location module
 ---------------------------------------
 
@@ -208,14 +216,6 @@ plaso.cli.helpers.temporary\_directory module
 ---------------------------------------------
 
 .. automodule:: plaso.cli.helpers.temporary_directory
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-plaso.cli.helpers.text\_prepend module
---------------------------------------
-
-.. automodule:: plaso.cli.helpers.text_prepend
    :members:
    :undoc-members:
    :show-inheritance:

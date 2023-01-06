@@ -12,6 +12,14 @@ plaso.lib.bufferlib module
    :undoc-members:
    :show-inheritance:
 
+plaso.lib.cookie\_plugins\_helper module
+----------------------------------------
+
+.. automodule:: plaso.lib.cookie_plugins_helper
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 plaso.lib.decorators module
 ---------------------------
 

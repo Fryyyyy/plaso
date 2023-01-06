@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Processing configuration classes."""
 
-from plaso.containers import interface
+from acstore.containers import interface
 
 
 class CredentialConfiguration(interface.AttributeContainer):
@@ -86,6 +86,7 @@ class ProfilingConfiguration(interface.AttributeContainer):
     profilers (set(str)): names of the profilers to enable.
         Supported profilers are:
 
+        * 'format_checks', which profiles CPU time consumed per format check;
         * 'memory', which profiles memory usage;
         * 'parsers', which profiles CPU time consumed by individual parsers;
         * 'processing', which profiles CPU time consumed by different parts of
@@ -112,6 +113,14 @@ class ProfilingConfiguration(interface.AttributeContainer):
       bool: True if analyzers profiling is configured.
     """
     return 'analyzers' in self.profilers
+
+  def HaveProfileFormatChecks(self):
+    """Determines if format checks profiling is configured.
+
+    Returns:
+      bool: True if format checks profiling is configured.
+    """
+    return 'format_checks' in self.profilers
 
   def HaveProfileMemory(self):
     """Determines if memory profiling is configured.
@@ -189,6 +198,10 @@ class ProcessingConfiguration(interface.AttributeContainer):
     log_filename (str): name of the log file.
     parser_filter_expression (str): parser filter expression,
         where None represents all parsers and plugins.
+<<<<<<< HEAD
+=======
+    preferred_codepage (str): preferred codepage.
+>>>>>>> origin/main
     preferred_encoding (str): preferred output encoding.
     preferred_language (str): preferred language.
     preferred_time_zone (str): preferred time zone.
@@ -199,7 +212,6 @@ class ProcessingConfiguration(interface.AttributeContainer):
     task_storage_path (str): path of the directory containing SQLite task
         storage files.
     temporary_directory (str): path of the directory for temporary files.
-    text_prepend (str): text to prepend to every display name.
   """
   CONTAINER_TYPE = 'processing_configuration'
 
@@ -216,6 +228,10 @@ class ProcessingConfiguration(interface.AttributeContainer):
     self.filter_file = None
     self.log_filename = None
     self.parser_filter_expression = None
+<<<<<<< HEAD
+=======
+    self.preferred_codepage = None
+>>>>>>> origin/main
     self.preferred_encoding = None
     self.preferred_language = None
     self.preferred_time_zone = None
@@ -224,4 +240,3 @@ class ProcessingConfiguration(interface.AttributeContainer):
     self.task_storage_format = None
     self.task_storage_path = None
     self.temporary_directory = None
-    self.text_prepend = None

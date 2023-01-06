@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""This file contains a MRUList Registry plugin.
+"""Windows Registry plugin to parse the MRUList Registry values.
 
 Also see:
-https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
+  https://winreg-kb.readthedocs.io/en/latest/sources/explorer-keys/Most-recently-used.html
 """
 
 import abc
@@ -11,8 +11,6 @@ import os
 from dtfabric.runtime import data_maps as dtfabric_data_maps
 
 from plaso.containers import events
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.lib import dtfabric_helper
 from plaso.lib import errors
 from plaso.parsers import logger
@@ -27,6 +25,8 @@ class MRUListEventData(events.EventData):
   Attributes:
     entries (str): most recently used (MRU) entries.
     key_path (str): Windows Registry key path.
+    last_written_time (dfdatetime.DateTimeValues): entry last written date and
+        time.
   """
 
   DATA_TYPE = 'windows:registry:mrulist'
@@ -36,6 +36,7 @@ class MRUListEventData(events.EventData):
     super(MRUListEventData, self).__init__(data_type=self.DATA_TYPE)
     self.entries = None
     self.key_path = None
+    self.last_written_time = None
 
 
 class MRUListStringRegistryKeyFilter(
@@ -83,7 +84,7 @@ class BaseMRUListWindowsRegistryPlugin(
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key that contains
            the MRUList value.
       entry_index (int): MRUList entry index.
@@ -122,7 +123,7 @@ class BaseMRUListWindowsRegistryPlugin(
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
       codepage (Optional[str]): extended ASCII string codepage.
     """
@@ -165,10 +166,9 @@ class BaseMRUListWindowsRegistryPlugin(
     event_data = MRUListEventData()
     event_data.entries = ' '.join(entries)
     event_data.key_path = registry_key.path
+    event_data.last_written_time = registry_key.last_written_time
 
-    event = time_events.DateTimeValuesEvent(
-        registry_key.last_written_time, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+    parser_mediator.ProduceEventData(event_data)
 
 
 class MRUListStringWindowsRegistryPlugin(BaseMRUListWindowsRegistryPlugin):
@@ -185,7 +185,7 @@ class MRUListStringWindowsRegistryPlugin(BaseMRUListWindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key that contains
            the MRUList value.
       entry_index (int): MRUList entry index.
@@ -231,7 +231,7 @@ class MRUListStringWindowsRegistryPlugin(BaseMRUListWindowsRegistryPlugin):
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
       codepage (Optional[str]): extended ASCII string codepage.
     """
@@ -258,7 +258,7 @@ class MRUListShellItemListWindowsRegistryPlugin(
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key that contains
            the MRUList value.
       entry_index (int): MRUList entry index.
@@ -298,7 +298,7 @@ class MRUListShellItemListWindowsRegistryPlugin(
 
     Args:
       parser_mediator (ParserMediator): mediates interactions between parsers
-          and other components, such as storage and dfvfs.
+          and other components, such as storage and dfVFS.
       registry_key (dfwinreg.WinRegistryKey): Windows Registry key.
       codepage (Optional[str]): extended ASCII string codepage.
     """

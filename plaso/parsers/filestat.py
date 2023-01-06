@@ -7,7 +7,10 @@ from dfvfs.lib import definitions as dfvfs_definitions
 
 from plaso.containers import event_registry
 from plaso.containers import events
+<<<<<<< HEAD
 from plaso.lib import definitions
+=======
+>>>>>>> origin/main
 from plaso.parsers import interface
 from plaso.parsers import manager
 
@@ -155,6 +158,9 @@ class FileStatParser(interface.FileEntryParser):
     attribute_names = []
     for attribute in file_entry.attributes:
       attribute_name = getattr(attribute, 'name', None)
+      if isinstance(attribute_name, bytes):
+        attribute_name = attribute_name.decode('utf-8')
+
       if file_system_type != 'NTFS' and attribute_name:
         attribute_names.append(attribute_name)
 

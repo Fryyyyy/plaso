@@ -7,8 +7,6 @@ import unittest
 from dfdatetime import posix_time as dfdatetime_posix_time
 
 from plaso.containers import plist_event
-from plaso.containers import time_events
-from plaso.lib import definitions
 from plaso.parsers.plist_plugins import interface
 
 from tests.parsers.plist_plugins import test_lib
@@ -34,12 +32,10 @@ class MockPlugin(interface.PlistPlugin):
     event_data = plist_event.PlistTimeEventData()
     event_data.key = 'LastInquiryUpdate'
     event_data.root = '/DeviceCache/44-00-00-00-00-00'
-
-    date_time = dfdatetime_posix_time.PosixTimeInMicroseconds(
+    event_data.written_time = dfdatetime_posix_time.PosixTimeInMicroseconds(
         timestamp=1351827808261762)
-    event = time_events.DateTimeValuesEvent(
-        date_time, definitions.TIME_DESCRIPTION_WRITTEN)
-    parser_mediator.ProduceEventWithEventData(event, event_data)
+
+    parser_mediator.ProduceEventData(event_data)
 
 
 class TestPlistPlugin(test_lib.PlistPluginTestCase):
@@ -87,8 +83,9 @@ class TestPlistPlugin(test_lib.PlistPluginTestCase):
     storage_writer = self._ParsePlistWithPlugin(
         plugin, 'plist_binary', top_level)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -103,8 +100,9 @@ class TestPlistPlugin(test_lib.PlistPluginTestCase):
     storage_writer = self._ParsePlistWithPlugin(
         plugin, 'pLiSt_BinAry', top_level)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 1)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 1)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')

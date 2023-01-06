@@ -22,6 +22,7 @@ from plaso.containers import events
 from plaso.containers import time_events
 from plaso.containers import warnings
 from plaso.engine import extractors
+from plaso.engine import timeliner
 from plaso.lib import definitions
 from plaso.lib import errors
 from plaso.lib import loggers
@@ -94,10 +95,10 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
   * merge results returned by extraction worker processes.
   """
 
-  _CONTAINER_TYPE_EVENT = events.EventObject.CONTAINER_TYPE
   _CONTAINER_TYPE_EVENT_DATA = events.EventData.CONTAINER_TYPE
   _CONTAINER_TYPE_EVENT_DATA_STREAM = events.EventDataStream.CONTAINER_TYPE
   _CONTAINER_TYPE_EVENT_SOURCE = event_sources.EventSource.CONTAINER_TYPE
+  _CONTAINER_TYPE_YEAR_LESS_LOG_HELPER = events.YearLessLogHelper.CONTAINER_TYPE
 
   # Maximum number of concurrent tasks.
   _MAXIMUM_NUMBER_OF_TASKS = 10000
@@ -107,7 +108,7 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
   _UNICODE_SURROGATES_RE = re.compile('[\ud800-\udfff]')
 
   _WORKER_PROCESSES_MINIMUM = 2
-  _WORKER_PROCESSES_MAXIMUM = 15
+  _WORKER_PROCESSES_MAXIMUM = 99
 
   _ZEROMQ_NO_WORKER_REQUEST_TIME_SECONDS = 10 * 60
 
@@ -163,18 +164,19 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
 
     super(ExtractionMultiProcessEngine, self).__init__()
     self._enable_sigsegv_handler = False
+<<<<<<< HEAD
+=======
+    self._event_data_timeliner = None
+>>>>>>> origin/main
     self._extraction_worker = None
     self._maximum_number_of_containers = 50
     self._maximum_number_of_tasks = maximum_number_of_tasks
     self._merge_task = None
     self._merge_task_on_hold = None
-    self._number_of_consumed_events = 0
-    self._number_of_consumed_event_tags = 0
-    self._number_of_consumed_reports = 0
+    self._number_of_consumed_event_data = 0
     self._number_of_consumed_sources = 0
+    self._number_of_produced_event_data = 0
     self._number_of_produced_events = 0
-    self._number_of_produced_event_tags = 0
-    self._number_of_produced_reports = 0
     self._number_of_produced_sources = 0
     self._number_of_worker_processes = number_of_worker_processes
     self._parsers_counter = collections.Counter()
@@ -312,28 +314,11 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
           containers.
       container (AttributeContainer): attribute container.
     """
-    if container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT:
-      event_data_identifier = container.GetEventDataIdentifier()
-      event_data_lookup_key = event_data_identifier.CopyToString()
+    self._status = definitions.STATUS_INDICATOR_MERGING
 
-      event_data_identifier = merge_helper.GetAttributeContainerIdentifier(
-          event_data_lookup_key)
-
-      if event_data_identifier:
-        container.SetEventDataIdentifier(event_data_identifier)
-      else:
-        identifier = container.GetIdentifier()
-        identifier_string = identifier.CopyToString()
-
-        # TODO: store this as a merge warning so this is preserved
-        # in the storage file.
-        logger.error((
-            'Unable to merge event attribute container: {0:s} since '
-            'corresponding event data: {1:s} could not be found.').format(
-                identifier_string, event_data_lookup_key))
-        return
-
-    elif container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT_DATA:
+    if container.CONTAINER_TYPE in (
+        self._CONTAINER_TYPE_EVENT_DATA,
+        self._CONTAINER_TYPE_YEAR_LESS_LOG_HELPER):
       event_data_stream_identifier = container.GetEventDataStreamIdentifier()
       event_data_stream_lookup_key = None
       if event_data_stream_identifier:
@@ -353,9 +338,11 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
         # TODO: store this as a merge warning so this is preserved
         # in the storage file.
         logger.error((
-            'Unable to merge event data attribute container: {0:s} since '
-            'corresponding event data stream: {1:s} could not be '
-            'found.').format(identifier_string, event_data_stream_lookup_key))
+            'Unable to merge {0:s} attribute container: {1:s} since '
+            'corresponding event data stream: {2:s} could not be '
+            'found.').format(
+                container.CONTAINER_TYPE, identifier_string,
+                event_data_stream_lookup_key))
         return
 
     elif container.CONTAINER_TYPE in (
@@ -402,23 +389,31 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
       identifier = container.GetIdentifier()
       merge_helper.SetAttributeContainerIdentifier(lookup_key, identifier)
 
-    if container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT:
-      parser_name = merge_helper.event_data_parser_mappings.get(
-          event_data_lookup_key, 'N/A')
-      self._parsers_counter[parser_name] += 1
-      self._parsers_counter['total'] += 1
+    if container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT_DATA:
+      self._number_of_produced_event_data += 1
 
-      self._number_of_produced_events += 1
+      self._status = definitions.STATUS_INDICATOR_TIMELINING
 
+<<<<<<< HEAD
     elif container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT_DATA:
       parser_name = container.parser.rsplit('/', maxsplit=1)[-1]
       merge_helper.event_data_parser_mappings[lookup_key] = parser_name
+=======
+      # Generate events on merge.
+      self._event_data_timeliner.ProcessEventData(storage_writer, container)
+
+      self._number_of_consumed_event_data += 1
+      self._number_of_produced_events += (
+          self._event_data_timeliner.number_of_produced_events)
+>>>>>>> origin/main
 
       # Generate events on merge.
       self._ProcessEventData(storage_writer, container)
 
     elif container.CONTAINER_TYPE == self._CONTAINER_TYPE_EVENT_SOURCE:
       self._number_of_produced_sources += 1
+
+    self._status = definitions.STATUS_INDICATOR_RUNNING
 
   def _MergeAttributeContainers(
         self, storage_writer, merge_helper, maximum_number_of_containers=0):
@@ -500,8 +495,6 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
       task = self._task_manager.GetTaskPendingMerge(self._merge_task)
 
     if task or self._task_merge_helper:
-      self._status = definitions.STATUS_INDICATOR_MERGING
-
       if self._processing_profiler:
         self._processing_profiler.StartTiming('merge')
 
@@ -589,8 +582,6 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
 
           self._task_manager.SampleTaskStatus(self._merge_task, 'merge_resumed')
 
-      self._status = definitions.STATUS_INDICATOR_RUNNING
-
   def _ProcessSources(
       self, source_configurations, storage_writer, session_identifier):
     """Processes the sources.
@@ -606,13 +597,10 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
       self._processing_profiler.StartTiming('process_sources')
 
     self._status = definitions.STATUS_INDICATOR_COLLECTING
-    self._number_of_consumed_event_tags = 0
-    self._number_of_consumed_events = 0
-    self._number_of_consumed_reports = 0
+    self._number_of_consumed_event_data = 0
     self._number_of_consumed_sources = 0
-    self._number_of_produced_event_tags = 0
+    self._number_of_produced_event_data = 0
     self._number_of_produced_events = 0
-    self._number_of_produced_reports = 0
     self._number_of_produced_sources = 0
 
     stored_parsers_counter = collections.Counter({
@@ -656,6 +644,16 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
     else:
       self._status = definitions.STATUS_INDICATOR_COMPLETED
 
+    for key, value in self._event_data_timeliner.parsers_counter.items():
+      parser_count = stored_parsers_counter.get(key, None)
+      if parser_count:
+        parser_count.number_of_events += value
+        storage_writer.UpdateAttributeContainer(parser_count)
+      else:
+        parser_count = counts.ParserCount(name=key, number_of_events=value)
+        storage_writer.AddAttributeContainer(parser_count)
+
+    # TODO: remove after completion event and event data split.
     for key, value in self._parsers_counter.items():
       parser_count = stored_parsers_counter.get(key, None)
       if parser_count:
@@ -902,10 +900,9 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
     self._processing_status.UpdateForemanStatus(
         self._name, self._status, self._pid, used_memory, display_name,
         self._number_of_consumed_sources, self._number_of_produced_sources,
-        self._number_of_consumed_events, self._number_of_produced_events,
-        self._number_of_consumed_event_tags,
-        self._number_of_produced_event_tags, self._number_of_consumed_reports,
-        self._number_of_produced_reports)
+        self._number_of_consumed_event_data,
+        self._number_of_produced_event_data,
+        0, self._number_of_produced_events, 0, 0, 0, 0)
 
   def _UpdateProcessingStatus(self, pid, process_status, used_memory):
     """Updates the processing status.
@@ -932,20 +929,15 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
 
     display_name = process_status.get('display_name', '')
 
-    number_of_consumed_event_tags = process_status.get(
-        'number_of_consumed_event_tags', None)
-    number_of_produced_event_tags = process_status.get(
-        'number_of_produced_event_tags', None)
+    number_of_consumed_event_data = process_status.get(
+        'number_of_consumed_event_data', None)
+    number_of_produced_event_data = process_status.get(
+        'number_of_produced_event_data', None)
 
     number_of_consumed_events = process_status.get(
         'number_of_consumed_events', None)
     number_of_produced_events = process_status.get(
         'number_of_produced_events', None)
-
-    number_of_consumed_reports = process_status.get(
-        'number_of_consumed_reports', None)
-    number_of_produced_reports = process_status.get(
-        'number_of_produced_reports', None)
 
     number_of_consumed_sources = process_status.get(
         'number_of_consumed_sources', None)
@@ -969,9 +961,9 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
     self._processing_status.UpdateWorkerStatus(
         process.name, processing_status, pid, used_memory, display_name,
         number_of_consumed_sources, number_of_produced_sources,
+        number_of_consumed_event_data, number_of_produced_event_data,
         number_of_consumed_events, number_of_produced_events,
-        number_of_consumed_event_tags, number_of_produced_event_tags,
-        number_of_consumed_reports, number_of_produced_reports)
+        0, 0, 0, 0)
 
     task_identifier = process_status.get('task_identifier', '')
     if not task_identifier:
@@ -1025,8 +1017,22 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
 
     Returns:
       ProcessingStatus: processing status.
+
+    Raises:
+      BadConfigOption: if the preferred time zone is invalid.
     """
     self._enable_sigsegv_handler = enable_sigsegv_handler
+
+    self._event_data_timeliner = timeliner.EventDataTimeliner(
+        self.knowledge_base,
+        data_location=processing_configuration.data_location,
+        preferred_year=processing_configuration.preferred_year)
+
+    try:
+      self._event_data_timeliner.SetPreferredTimeZone(
+          processing_configuration.preferred_time_zone)
+    except ValueError as exception:
+      raise errors.BadConfigOption(exception)
 
     # Keep track of certain values so we can spawn new extraction workers.
     self._processing_configuration = processing_configuration
@@ -1129,9 +1135,8 @@ class ExtractionMultiProcessEngine(task_engine.TaskMultiProcessEngine):
 
     # Reset values.
     self._enable_sigsegv_handler = None
-
+    self._event_data_timeliner = None
     self._processing_configuration = None
-
     self._status_update_callback = None
     self._storage_file_path = None
     self._storage_writer = None

@@ -8,7 +8,6 @@ from dfdatetime import filetime as dfdatetime_filetime
 from dfwinreg import definitions as dfwinreg_definitions
 from dfwinreg import fake as dfwinreg_fake
 
-from plaso.lib import definitions
 from plaso.parsers.winreg_plugins import networks
 
 from tests.parsers.winreg_plugins import test_lib
@@ -211,8 +210,9 @@ class NetworksWindowsRegistryPluginTest(test_lib.RegistryPluginTestCase):
     plugin = networks.NetworksWindowsRegistryPlugin()
     storage_writer = self._ParseKeyWithPlugin(registry_key, plugin)
 
-    number_of_events = storage_writer.GetNumberOfAttributeContainers('event')
-    self.assertEqual(number_of_events, 4)
+    number_of_event_data = storage_writer.GetNumberOfAttributeContainers(
+        'event_data')
+    self.assertEqual(number_of_event_data, 2)
 
     number_of_warnings = storage_writer.GetNumberOfAttributeContainers(
         'extraction_warning')
@@ -222,18 +222,22 @@ class NetworksWindowsRegistryPluginTest(test_lib.RegistryPluginTestCase):
         'recovery_warning')
     self.assertEqual(number_of_warnings, 0)
 
-    events = list(storage_writer.GetSortedEvents())
-
     expected_event_values = {
+<<<<<<< HEAD
         'connection_type': 'Wired',
+=======
+        'connection_type': 6,
+        'creation_time': '2014-05-06T17:02:19.795+00:00',
+>>>>>>> origin/main
         'data_type': 'windows:registry:network',
         'date_time': '2014-05-06T17:02:19.795+00:00',
         'default_gateway_mac': '00:50:56:ea:6c:ec',
         'description': 'Network',
         'dns_suffix': 'localdomain',
-        'ssid': 'Network',
-        'timestamp_desc': definitions.TIME_DESCRIPTION_CREATION}
+        'last_connected_time': '2014-05-06T17:07:54.010+00:00',
+        'ssid': 'Network'}
 
+<<<<<<< HEAD
     self.CheckEventValues(storage_writer, events[0], expected_event_values)
 
     expected_event_values = {
@@ -245,6 +249,10 @@ class NetworksWindowsRegistryPluginTest(test_lib.RegistryPluginTestCase):
         'timestamp_desc': definitions.TIME_DESCRIPTION_LAST_CONNECTED}
 
     self.CheckEventValues(storage_writer, events[3], expected_event_values)
+=======
+    event_data = storage_writer.GetAttributeContainerByIndex('event_data', 1)
+    self.CheckEventData(event_data, expected_event_values)
+>>>>>>> origin/main
 
 
 if __name__ == '__main__':

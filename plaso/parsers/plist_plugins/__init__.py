@@ -9,8 +9,9 @@ from plaso.parsers.plist_plugins import install_history
 from plaso.parsers.plist_plugins import ios_carplay
 from plaso.parsers.plist_plugins import ipod
 from plaso.parsers.plist_plugins import launchd
-from plaso.parsers.plist_plugins import mac_user
-from plaso.parsers.plist_plugins import safari
+from plaso.parsers.plist_plugins import macos_user
+from plaso.parsers.plist_plugins import safari_downloads
+from plaso.parsers.plist_plugins import safari_history
 from plaso.parsers.plist_plugins import software_update
 from plaso.parsers.plist_plugins import spotlight_searched_terms
 from plaso.parsers.plist_plugins import spotlight_volume
