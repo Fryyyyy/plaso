@@ -93,8 +93,8 @@ class StatedumpParser(dtfabric_helper.DtFabricHelper):
 
     ct = statedump_structure.continuous_time
     ts = aul_time.FindClosestTimesyncItemInList(
-      tracev3.boot_uuid_ts_list.sync_records, ct)
-    time = ts.wall_time + ct - ts.kernel_continuous_timestamp
+      tracev3.boot_uuid_ts.sync_records, ct)
+    time = ts.wall_time + (ct * tracev3.boot_uuid_ts.adjustment)  - ts.kernel_continuous_timestamp
 
     if statedump_structure.data_type == self._STATETYPE_PLIST:
       try:

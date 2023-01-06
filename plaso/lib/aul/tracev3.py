@@ -64,7 +64,7 @@ class TraceV3FileParser(interface.FileObjectParser,
   def __init__(self, timesync_parser, uuid_parser, dsc_parser):
     """Initializes a tracev3 file parser."""
     super(TraceV3FileParser, self).__init__()
-    self.boot_uuid_ts_list = None
+    self.boot_uuid_ts = None
     self.catalog = None
     self.catalog_files = []
     self.chunksets = []
@@ -609,13 +609,13 @@ class TraceV3FileParser(interface.FileObjectParser,
     logger.debug('TZ Info: {0:s}'.format(
         self.header.timezone_subchunk.timezone_subchunk_data.path_to_tzfile))
 
-    self.boot_uuid_ts_list = aul_time.GetBootUuidTimeSyncList(
+    self.boot_uuid_ts = aul_time.GetBootUuidTimeSync(
         self.timesync_parser.records,
         self.header.generation_subchunk.generation_subchunk_data.boot_uuid)
     logger.debug(
         'Tracev3 Header Timestamp: %s',
         aul_time.TimestampFromContTime(
-            self.boot_uuid_ts_list.sync_records,
+            self.boot_uuid_ts.sync_records,
             self.header.continuous_time_subchunk.continuous_time_data))
 
   def _ReadCatalog(self, parser_mediator, file_object, file_offset):
@@ -1057,7 +1057,7 @@ class TraceV3FileParser(interface.FileObjectParser,
 
     logger.debug(
         'Firehose Header Timestamp: %s',
-        aul_time.TimestampFromContTime(self.boot_uuid_ts_list.sync_records,
+        aul_time.TimestampFromContTime(self.boot_uuid_ts.sync_records,
                                        firehose_header.base_continuous_time))
 
     tracepoint_map = self._GetDataTypeMap('tracev3_firehose_tracepoint')
@@ -1078,8 +1078,8 @@ class TraceV3FileParser(interface.FileObjectParser,
           firehose_tracepoint.continuous_time_lower |
           (firehose_tracepoint.continuous_time_upper << 32))
       ts = aul_time.FindClosestTimesyncItemInList(
-          self.boot_uuid_ts_list.sync_records, ct)
-      time = ts.wall_time + ct - ts.kernel_continuous_timestamp
+          self.boot_uuid_ts.sync_records, ct)
+      time = ts.wall_time + (ct * self.boot_uuid_ts.adjustment) - ts.kernel_continuous_timestamp
       self._ParseTracepointData(parser_mediator, firehose_tracepoint, proc_info,
                                 time, private_strings)
 

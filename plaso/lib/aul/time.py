@@ -5,7 +5,7 @@ from dfdatetime import apfs_time as dfdatetime_apfs_time
 
 from plaso.parsers import logger
 
-def GetBootUuidTimeSyncList(records, uuid):
+def GetBootUuidTimeSync(records, uuid):
   """Retrieves the timesync for a specific boot identifier.
 
   Args:
@@ -17,6 +17,9 @@ def GetBootUuidTimeSyncList(records, uuid):
   """
   for ts in records:
     if ts.boot_uuid == uuid:
+      ts.adjustment = 1
+      if ts.timebase_numerator == 125 and ts.timebase_denominator == 3:
+        ts.adjustment = 125 / 3
       return ts
   logger.error("Could not find boot uuid {} in Timesync!".format(uuid))
   return None
